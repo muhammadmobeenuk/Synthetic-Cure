@@ -2756,3 +2756,310 @@ button:focus-visible, a:focus-visible { outline-color: #bc8100; }
 /* Hide scrollbar chrome; all scroll containers remain scrollable. */
 * { scrollbar-width: none; }
 *::-webkit-scrollbar { display: none; }
+
+/* Smart & Intelligent Input Component Suites */
+.smart-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-bottom: 18px;
+  min-width: 0;
+  position: relative;
+}
+.smart-field-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.smart-field-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 650;
+  color: #14283b;
+  line-height: 1.4;
+}
+.smart-required-badge {
+  color: #c53030;
+  font-weight: 700;
+}
+.smart-field-hint {
+  font-size: 11px;
+  color: #637686;
+  line-height: 1.4;
+}
+.smart-field-error {
+  font-size: 11px;
+  color: #c53030;
+  font-weight: 550;
+}
+.smart-fill-max-btn {
+  background: #edf5f1;
+  color: #087a55;
+  border: 1px solid #cfe4d8;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 650;
+  padding: 3px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.smart-fill-max-btn:hover {
+  background: #087a55;
+  color: #fff;
+}
+.smart-combobox-wrapper {
+  position: relative;
+  width: 100%;
+}
+.smart-combobox-control {
+  min-height: 48px;
+  background: #fff;
+  border: 1px solid #ccd8df;
+  border-radius: 7px;
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 0.15s, outline 0.15s;
+}
+.smart-combobox-control:focus-visible,
+.smart-combobox-control.open {
+  outline: 2px solid #087a55;
+  outline-offset: 1px;
+  border-color: #087a55;
+}
+.smart-combobox-control.disabled {
+  background: #f4f7f8;
+  color: #8899a6;
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+.smart-combobox-value {
+  flex: 1;
+  min-width: 0;
+}
+.smart-combobox-value .selected-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.smart-combobox-value .selected-text strong {
+  font-size: 13px;
+  color: #14283b;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.smart-combobox-value .selected-text small {
+  font-size: 11px;
+  color: #536575;
+}
+.smart-combobox-value .placeholder-text {
+  color: #687b88;
+  font-size: 13px;
+}
+.smart-combobox-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #687b88;
+}
+.smart-clear-btn {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  color: #687b88;
+  transition: background 0.12s;
+}
+.smart-clear-btn:hover {
+  background: #edf2f5;
+  color: #14283b;
+}
+.smart-chevron {
+  transition: transform 0.2s ease;
+}
+.smart-chevron.rotate {
+  transform: rotate(180deg);
+}
+.smart-combobox-dropdown {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid #ccd8df;
+  border-radius: 8px;
+  box-shadow: 0 12px 28px -4px rgba(16, 40, 63, 0.16), 0 4px 12px -2px rgba(16, 40, 63, 0.08);
+  z-index: 60;
+  overflow: hidden;
+}
+.smart-combobox-search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #eef2f5;
+  background: #fbfcfd;
+}
+.smart-combobox-search-box .search-icon {
+  color: #087a55;
+  flex-shrink: 0;
+}
+.smart-combobox-search-input {
+  width: 100%;
+  border: 0 !important;
+  background: transparent !important;
+  min-height: 34px !important;
+  padding: 4px 0 !important;
+  font-size: 13px !important;
+  outline: none !important;
+}
+.smart-clear-query {
+  color: #8899a6;
+  padding: 4px;
+}
+.smart-combobox-list {
+  max-height: 240px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.smart-combobox-option {
+  min-height: 46px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #f6f8f9;
+  transition: background 0.1s;
+}
+.smart-combobox-option:last-child {
+  border-bottom: 0;
+}
+.smart-combobox-option:hover,
+.smart-combobox-option.highlighted {
+  background: #f0f7f4;
+}
+.smart-combobox-option.selected {
+  background: #def2ed;
+}
+.smart-combobox-option .option-text {
+  flex: 1;
+  min-width: 0;
+}
+.smart-combobox-option .option-label {
+  font-size: 13px;
+  font-weight: 550;
+  color: #14283b;
+}
+.smart-combobox-option .option-sublabel {
+  font-size: 11px;
+  color: #536575;
+  margin-top: 2px;
+}
+.smart-combobox-option .option-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.smart-combobox-option .option-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #edf5f1;
+  color: #087a55;
+}
+.smart-combobox-option .check-icon {
+  color: #087a55;
+}
+.smart-combobox-empty {
+  padding: 20px 16px;
+  font-size: 12px;
+  color: #687b88;
+  text-align: center;
+}
+.smart-quantity-wrapper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.smart-quantity-input-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 150px;
+  min-width: 140px;
+}
+.smart-quantity-input {
+  padding-right: 65px !important;
+  font-weight: 600;
+  font-size: 14px;
+}
+.smart-quantity-input-box.invalid .smart-quantity-input {
+  border-color: #c53030;
+  outline-color: #c53030;
+}
+.smart-unit-badge {
+  position: absolute;
+  right: 10px;
+  background: #edf5f1;
+  color: #087a55;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 5px;
+  border: 1px solid #d4e6db;
+  pointer-events: none;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.smart-steppers-container {
+  display: flex;
+  gap: 5px;
+  flex-wrap: nowrap;
+}
+.smart-step-btn,
+.smart-quick-add-btn {
+  min-height: 44px;
+  min-width: 38px;
+  padding: 0 10px;
+  background: #f0f4f7;
+  border: 1px solid #d4dee5;
+  border-radius: 6px;
+  color: #14283b;
+  font-size: 12px;
+  font-weight: 650;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.smart-step-btn:hover:not(:disabled),
+.smart-quick-add-btn:hover:not(:disabled) {
+  background: #087a55;
+  border-color: #087a55;
+  color: #fff;
+}
+.smart-step-btn:disabled,
+.smart-quick-add-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+

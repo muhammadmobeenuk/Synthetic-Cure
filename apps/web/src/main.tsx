@@ -6,6 +6,7 @@ import {ProductImport} from "./ProductImport";
 import {Inbound} from "./Inbound";
 import {DraftRecovery} from "./DraftRecovery";
 import {ContextPicker,AccessControl} from "./AccessControl";
+import {SmartCombobox, SmartQuantityInput, useBarcodeScanner, playScanFeedback} from "./SmartInputs";
 import {draftScope,legacyDraftScopes} from "./draft-scope";
 import {registerPendingCapture,preservePendingWork,signOutSafely} from "./work-preservation";
 import { CompanySetup } from "./CompanySetup";
@@ -3256,12 +3257,23 @@ function TaskDialog({
                 )}
               </fieldset>
             ) : f.options ? (
-              <Select
+              <SmartCombobox
                 key={f.key}
                 label={f.label}
                 options={f.options}
                 required={f.required}
                 value={values[f.key]}
+                hint={f.hint}
+                onChange={(v) => setValues({ ...values, [f.key]: v })}
+              />
+            ) : f.type === "number" ? (
+              <SmartQuantityInput
+                key={f.key}
+                label={f.label}
+                required={f.required}
+                value={values[f.key] || ""}
+                hint={f.hint}
+                placeholder="0.00"
                 onChange={(v) => setValues({ ...values, [f.key]: v })}
               />
             ) : (
@@ -3280,8 +3292,6 @@ function TaskDialog({
                     type={f.type || "text"}
                     required={f.required}
                     value={values[f.key]}
-                    step={f.type === "number" ? "0.000001" : undefined}
-                    min={f.type === "number" ? "0" : undefined}
                     onChange={(e) =>
                       setValues({ ...values, [f.key]: e.target.value })
                     }
@@ -4417,6 +4427,23 @@ function CountView({
     }
   }
   useEffect(()=>registerPendingCapture(async()=>{if(locationId||observed.length)await saveWork(user,"count",{locationId,observed,blind});}),[locationId,observed,blind,user.id,user.org_id,user.warehouse_id]);
+  useBarcodeScanner((barcode) => {
+    if (!locationId) {
+      playScanFeedback(false);
+      setMessage("Select a count location before scanning physical boxes.");
+      return;
+    }
+    const val = barcode.trim();
+    if (!val) return;
+    if (observed.includes(val)) {
+      playScanFeedback(false);
+      setMessage("Duplicate scan · already counted. Box total unchanged.");
+    } else {
+      setObserved((prev) => [...prev, val]);
+      playScanFeedback(true);
+      setMessage("Scanned box " + val + " · recorded locally");
+    }
+  }, !!locationId);
   return (
     <div className="count-layout">
       <section className="panel entity-card">
@@ -4425,8 +4452,9 @@ function CountView({
           Contents quantities remain separate. A repeated internal label is one
           observation, not another box.
         </p>
-        <Select
+        <SmartCombobox
           label="Count location"
+          placeholder="Search location to count…"
           value={locationId}
           onChange={(v) => {
             if (v !== locationId && observed.length && !window.confirm("Changing location clears the observations on this screen. Save your device draft first or cancel to keep counting here. Continue?")) return;
@@ -4437,6 +4465,7 @@ function CountView({
           options={(data.locations || []).map((l: Row) => ({
             value: l.id,
             label: l.code + " · " + l.name,
+            badge: l.kind,
           }))}
         />
         <label className="checkbox-field">
@@ -4452,12 +4481,14 @@ function CountView({
             e.preventDefault();
             const value = code.trim();
             if (!value) { setMessage("Enter an internal box ID before recording an observation."); return; }
-            if (observed.includes(value))
+            if (observed.includes(value)) {
+              playScanFeedback(false);
               setMessage(
                 "Duplicate scan · already counted. Box total unchanged.",
               );
-            else {
+            } else {
               setObserved([...observed, value]);
+              playScanFeedback(true);
               setMessage("Observed locally · not a stock adjustment");
             }
             setCode("");
