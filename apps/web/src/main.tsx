@@ -3,10 +3,11 @@ import {DocumentRecognition} from "./DocumentRecognition";
 import {PalletGroups} from "./PalletGroups";
 import {CustomerOrderForm} from "./CustomerOrderForm";
 import {ProductImport} from "./ProductImport";
+import {Inbound} from "./Inbound";
 import {DraftRecovery} from "./DraftRecovery";
 import {ContextPicker,AccessControl} from "./AccessControl";
 import {draftScope,legacyDraftScopes} from "./draft-scope";
-import {registerPendingCapture,preservePendingWork} from "./work-preservation";
+import {registerPendingCapture,preservePendingWork,signOutSafely} from "./work-preservation";
 import { CompanySetup } from "./CompanySetup";
 import { nextPreparationDate } from "../../../packages/domain/scheduling";
 import Decimal from "decimal.js";
@@ -299,7 +300,23 @@ function App() {
     [selectedOrderId, setSelectedOrderId] = useState<string | null>(null),
     [orderQuery, setOrderQuery] = useState(""),
     [selectedPalletId, setSelectedPalletId] = useState<string | null>(null),
-    [palletQuery, setPalletQuery] = useState("");
+    [palletQuery, setPalletQuery] = useState(""),
+    [selectedLocationId, setSelectedLocationId] = useState<string | null>(null),
+    [locationQuery, setLocationQuery] = useState(""),
+    [selectedProductId, setSelectedProductId] = useState<string | null>(null),
+    [productQuery, setProductQuery] = useState(""),
+    [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null),
+    [customerQuery, setCustomerQuery] = useState(""),
+    [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(null),
+    [shipmentQuery, setShipmentQuery] = useState(""),
+    [selectedTripId, setSelectedTripId] = useState<string | null>(null),
+    [tripQuery, setTripQuery] = useState(""),
+    [selectedIssueId, setSelectedIssueId] = useState<string | null>(null),
+    [issueQuery, setIssueQuery] = useState(""),
+    [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null),
+    [documentQuery, setDocumentQuery] = useState(""),
+    [selectedDriverShipmentId, setSelectedDriverShipmentId] = useState<string | null>(null),
+    [driverQuery, setDriverQuery] = useState("");
   useEffect(() => {
     const change = () => setPage(location.hash.slice(1) || "overview");
     const on = () => setOnline(navigator.onLine);
@@ -353,6 +370,21 @@ function App() {
     await preservePendingWork();
     await api("/auth/context",{companyId,warehouseId});
     cache.clear();location.hash="settings";location.reload();
+  }
+  async function signOut(userToClear:{id:string;org_id:string;home_org_id?:string}) {
+    let signedOut=false;
+    try {
+      const done=await signOutSafely({
+        capture:preservePendingWork,
+        count:async()=>(await identityDraftKeys(userToClear)).length,
+        confirm:(count)=>window.confirm(`You have ${count} saved device drafts. They are not synced. Signing out clears them. Stay signed in to finish them, or confirm to discard and sign out.`),
+        signOut:async()=>{await api('/auth/logout',{});signedOut=true;},
+        clear:()=>clearIdentityDrafts(userToClear),
+      });
+      if(done){cache.clear();location.reload();}
+    } catch {
+      window.alert(signedOut ? 'You are signed out, but device drafts could not be cleared. Device storage may still contain your work.' : 'Sign-out could not be confirmed. Your work may not have been saved. Keep this page open and check your connection and device storage before retrying.');
+    }
   }
   useEffect(()=>{if(user&&!user.warehouse_id){location.hash="settings";setPage("settings");}},[user?.id,user?.org_id,user?.warehouse_id]);
   async function refresh() {
@@ -969,7 +1001,7 @@ function App() {
         <Button onClick={() => void session.refetch()}>Retry connection</Button>
       </div>
     );
-  if (!user && session.data?.identity) return <div className="main-content"><ContextPicker session={session.data} onSwitch={switchWorkspace}/><p>No active company context. Your device drafts remain; choose an assigned company or contact its administrator.</p><button className="btn secondary" onClick={async()=>{const who={...session.data.identity,org_id:session.data.identity.home_org_id};const drafts=await identityDraftKeys(who);if(drafts.length&&!window.confirm("Saved device drafts are not synced. Sign out and clear your drafts?"))return;await api("/auth/logout",{});await clearIdentityDrafts(who);cache.clear();location.reload();}}>Sign out</button></div>;
+  if (!user && session.data?.identity) return <div className="main-content"><ContextPicker session={session.data} onSwitch={switchWorkspace}/><p>No active company context. Your device drafts remain; choose an assigned company or contact its administrator.</p><button className="btn secondary" onClick={()=>void signOut({...session.data.identity,org_id:session.data.identity.home_org_id})}>Sign out</button></div>;
   if (!user)
     return (
       <Login
@@ -1381,7 +1413,7 @@ function App() {
                 </>
               )}
               {page === "receive" && (
-                <Receipt key={draftScope(user as any)}
+                <div className="stack"><Inbound key={draftScope(user as any)} actor={user} products={rows('products')} locations={rows('locations')} canConfigure={can('configure')} canAdjust={can('adjust')} onSaved={refresh}/><Receipt key={draftScope(user as any)}
                   data={d}
                   user={user}
                   onCreated={async (b) => {
@@ -1389,7 +1421,7 @@ function App() {
                     setDetail(b.id);
                     setToast("Box received · confirmed by server");
                   }}
-                />
+                /></div>
               )}
               {page === "boxes" && (
                 <section className="panel">
@@ -1601,8 +1633,8 @@ function App() {
                       </Button>
                     )}
                   </div>
-                  <div className="card-grid">
-                    {rows("locations").map((l) => {
+                  {rows("locations").length > 0 && <div className="orders-workspace"><section className="panel orders-list-panel" aria-label="Warehouse locations"><div className="orders-list-header"><div><h2>Locations</h2><p>Select a location to see its occupants and details.</p></div><span className="order-count">{rows("locations").length} loaded</span></div><label className="orders-search"><Search size={19}/><span className="sr-only">Search locations</span><input type="search" value={locationQuery} onChange={e=>setLocationQuery(e.target.value)} placeholder="Search location code or name…"/></label><div className="pallet-list-columns" aria-hidden="true"><span>Location</span><span>Name</span><span>Type</span><span>Capacity</span></div><div>{rows("locations").filter(l=>[l.code,l.name,l.kind].some(v=>String(v||"").toLocaleLowerCase().includes(locationQuery.trim().toLocaleLowerCase()))).map(l=><button type="button" key={l.id} className={"pallet-list-row "+((selectedLocationId&&rows("locations").some(x=>x.id===selectedLocationId)?selectedLocationId:rows("locations")[0]?.id)===l.id?"selected":"")} aria-pressed={(selectedLocationId&&rows("locations").some(x=>x.id===selectedLocationId)?selectedLocationId:rows("locations")[0]?.id)===l.id} onClick={()=>setSelectedLocationId(l.id)}><strong>{l.code}</strong><span>{l.name||"Unconfirmed"}</span><span>{l.kind||"Unconfirmed"}</span><span>{l.capacity ?? "Unknown"}</span><ChevronRight size={16}/></button>)}{!rows("locations").some(l=>[l.code,l.name,l.kind].some(v=>String(v||"").toLocaleLowerCase().includes(locationQuery.trim().toLocaleLowerCase())))&&<p className="orders-no-results">No matching locations. Try another search.</p>}</div></section><div className="pallet-detail-panel" aria-label="Selected location details">
+                    {rows("locations").filter(l=>l.id===(selectedLocationId&&rows("locations").some(x=>x.id===selectedLocationId)?selectedLocationId:rows("locations")[0]?.id)).map((l) => {
                       const bs = rows("boxes").filter(
                         (b) => b.effective_location_id === l.id,
                       );
@@ -1618,7 +1650,7 @@ function App() {
                           <p>{l.name}</p>
                           <div className="location-count">
                             {bs.length}
-                            <small>boxes currently located</small>
+                            <small>loaded boxes at location</small>
                           </div>
                           <div className="mini-meta">
                             Capacity: {l.capacity ?? "Unknown"}
@@ -1644,7 +1676,8 @@ function App() {
                         </section>
                       );
                     })}
-                  </div>
+                  </div></div>}
+                  {!rows("locations").length && <Empty title="No locations yet" text="Add a location when its details are confirmed." />}
                 </>
               )}
               {page === "products" && (
@@ -1665,8 +1698,8 @@ function App() {
                       )}
                     </div>
                   </div>
-                  <div className="card-grid">
-                    {rows("products").map((p) => (
+                  {rows("products").length > 0 && <div className="orders-workspace"><section className="panel orders-list-panel" aria-label="Products"><div className="orders-list-header"><div><h2>Products</h2><p>Select a product to see its verified details and batches.</p></div><span className="order-count">{rows("products").length} loaded</span></div><label className="orders-search"><Search size={19}/><span className="sr-only">Search products</span><input type="search" value={productQuery} onChange={e=>setProductQuery(e.target.value)} placeholder="Search SKU or product name…"/></label><div className="pallet-list-columns" aria-hidden="true"><span>SKU</span><span>Product</span><span>Chinese name</span><span>Base unit</span></div><div>{rows("products").filter(p=>[p.sku,p.name,p.name_zh].some(v=>String(v||"").toLocaleLowerCase().includes(productQuery.trim().toLocaleLowerCase()))).map(p=><button type="button" key={p.id} className={"pallet-list-row "+((selectedProductId&&rows("products").some(x=>x.id===selectedProductId)?selectedProductId:rows("products")[0]?.id)===p.id?"selected":"")} aria-pressed={(selectedProductId&&rows("products").some(x=>x.id===selectedProductId)?selectedProductId:rows("products")[0]?.id)===p.id} onClick={()=>setSelectedProductId(p.id)}><strong>{p.sku}</strong><span>{p.name||"Unconfirmed"}</span><span>{p.name_zh||"Unconfirmed"}</span><span>{p.unit||"Unconfirmed"}</span><ChevronRight size={16}/></button>)}{!rows("products").some(p=>[p.sku,p.name,p.name_zh].some(v=>String(v||"").toLocaleLowerCase().includes(productQuery.trim().toLocaleLowerCase())))&&<p className="orders-no-results">No matching products. Try another search.</p>}</div></section><div className="pallet-detail-panel" aria-label="Selected product details">
+                    {rows("products").filter(p=>p.id===(selectedProductId&&rows("products").some(x=>x.id===selectedProductId)?selectedProductId:rows("products")[0]?.id)).map((p) => (
                       <section key={p.id} className="panel entity-card">
                         <div className="card-top">
                           <span className="entity-icon">
@@ -1737,7 +1770,8 @@ function App() {
                           ))}
                       </section>
                     ))}
-                  </div>
+                  </div></div>}
+                  {!rows("products").length && <Empty title="No products yet" text="Add products when their details are confirmed." />}
                 </>
               )}
               {page === "orders" && (
@@ -2143,8 +2177,8 @@ function App() {
                       </div>
                     )}
                   </div>
-                  <div className="card-grid">
-                    {rows("customers").map((c) => (
+                  {rows("customers").length > 0 && <div className="orders-workspace"><section className="panel orders-list-panel" aria-label="Ordering customers"><div className="orders-list-header"><div><h2>Customers</h2><p>Select an ordering customer to review receiving destinations.</p></div><span className="order-count">{rows("customers").length} loaded</span></div><label className="orders-search"><Search size={19}/><span className="sr-only">Search customers</span><input type="search" value={customerQuery} onChange={e=>setCustomerQuery(e.target.value)} placeholder="Search customer code or name…"/></label><div className="pallet-list-columns" aria-hidden="true"><span>Code</span><span>Customer</span><span>Chinese name</span><span>Destinations</span></div><div>{rows("customers").filter(c=>[c.code,c.name,c.name_zh].some(v=>String(v||"").toLocaleLowerCase().includes(customerQuery.trim().toLocaleLowerCase()))).map(c=><button type="button" key={c.id} className={"pallet-list-row "+((selectedCustomerId&&rows("customers").some(x=>x.id===selectedCustomerId)?selectedCustomerId:rows("customers")[0]?.id)===c.id?"selected":"")} aria-pressed={(selectedCustomerId&&rows("customers").some(x=>x.id===selectedCustomerId)?selectedCustomerId:rows("customers")[0]?.id)===c.id} onClick={()=>setSelectedCustomerId(c.id)}><strong>{c.code}</strong><span>{c.name||"Unconfirmed"}</span><span>{c.name_zh||"Unconfirmed"}</span><span>{rows("destinations").filter(d=>d.customer_id===c.id).length} loaded</span><ChevronRight size={16}/></button>)}{!rows("customers").some(c=>[c.code,c.name,c.name_zh].some(v=>String(v||"").toLocaleLowerCase().includes(customerQuery.trim().toLocaleLowerCase())))&&<p className="orders-no-results">No matching customers. Try another search.</p>}</div></section><div className="pallet-detail-panel" aria-label="Selected customer details">
+                    {rows("customers").filter(c=>c.id===(selectedCustomerId&&rows("customers").some(x=>x.id===selectedCustomerId)?selectedCustomerId:rows("customers")[0]?.id)).map((c) => (
                       <section className="panel entity-card" key={c.id}>
                         <span className="entity-icon">
                           <Users size={25} />
@@ -2230,17 +2264,19 @@ function App() {
                             rows("orders").filter((o) => o.customer_id === c.id)
                               .length
                           }{" "}
-                          internal orders
+                          loaded internal orders
                         </p>
                       </section>
                     ))}
-                  </div>
+                  </div></div>}
+                  {!rows("customers").length && <Empty title="No customers yet" text="Add an ordering customer when its details are confirmed." />}
                 </>
               )}
               {page === "trips" && (
                 <div className="stack">
                   {can("dispatch") && <PalletGroups key={draftScope(user as any)} actor={user} trips={rows("trips")} pallets={rows("pallets")}/>}
-                  {rows("trips").map((t) => (
+                  {rows("trips").length > 0 && <div className="orders-workspace"><section className="panel orders-list-panel" aria-label="Trips"><div className="orders-list-header"><div><h2>Trips</h2><p>Select a trip to review its driver, vehicle and stops.</p></div><span className="order-count">{rows("trips").length} loaded</span></div><label className="orders-search"><Search size={19}/><span className="sr-only">Search trips</span><input type="search" value={tripQuery} onChange={e=>setTripQuery(e.target.value)} placeholder="Search trip, driver or vehicle…"/></label><div className="pallet-list-columns" aria-hidden="true"><span>Trip</span><span>Date</span><span>Driver</span><span>Status</span></div><div>{rows("trips").filter(t=>[t.code,t.driver_name,t.vehicle].some(v=>String(v||"").toLocaleLowerCase().includes(tripQuery.trim().toLocaleLowerCase()))).map(t=><button type="button" key={t.id} className={"pallet-list-row "+((selectedTripId&&rows("trips").some(x=>x.id===selectedTripId)?selectedTripId:rows("trips")[0]?.id)===t.id?"selected":"")} aria-pressed={(selectedTripId&&rows("trips").some(x=>x.id===selectedTripId)?selectedTripId:rows("trips")[0]?.id)===t.id} onClick={()=>setSelectedTripId(t.id)}><strong>{t.code}</strong><span>{dateLabel(t.business_date,d.configuration)}</span><span>{t.driver_name||rows("users").find(u=>u.id===t.driver_id)?.name||"Not assigned"}</span><Badge value={t.status}/><ChevronRight size={16}/></button>)}{!rows("trips").some(t=>[t.code,t.driver_name,t.vehicle].some(v=>String(v||"").toLocaleLowerCase().includes(tripQuery.trim().toLocaleLowerCase())))&&<p className="orders-no-results">No matching trips. Try another search.</p>}</div></section><div className="pallet-detail-panel" aria-label="Selected trip details">
+                  {rows("trips").filter(t=>t.id===(selectedTripId&&rows("trips").some(x=>x.id===selectedTripId)?selectedTripId:rows("trips")[0]?.id)).map((t) => (
                     <section className="panel entity-card" key={t.id}>
                       <div className="section-head">
                         <div>
@@ -2286,7 +2322,7 @@ function App() {
                                     (sh) => sh.stop_id === s.id,
                                   ).length
                                 }{" "}
-                                shipments
+                                loaded shipments
                               </span>
                             </div>
                           </div>
@@ -2330,6 +2366,7 @@ function App() {
                       )}
                     </section>
                   ))}
+                  </div></div>}
                   {!rows("trips").length && (
                     <Empty
                       title="No trips assigned"
@@ -2340,10 +2377,9 @@ function App() {
               )}
               {page === "dispatch" && (
                 <div className="stack">
+                  {rows("shipments").some(s=>!["cancelled","completed"].includes(s.status)) && <div className="orders-workspace"><section className="panel orders-list-panel" aria-label="Active shipments"><div className="orders-list-header"><div><h2>Shipments</h2><p>Select a shipment to verify its manifest. Loading does not mean delivery.</p></div><span className="order-count">{rows("shipments").filter(s=>!["cancelled","completed"].includes(s.status)).length} loaded</span></div><label className="orders-search"><Search size={19}/><span className="sr-only">Search shipments</span><input type="search" value={shipmentQuery} onChange={e=>setShipmentQuery(e.target.value)} placeholder="Search shipment, order or destination…"/></label><div className="pallet-list-columns" aria-hidden="true"><span>Shipment</span><span>Order</span><span>Destination</span><span>Status</span></div><div>{rows("shipments").filter(s=>!["cancelled","completed"].includes(s.status)&&[s.id,s.order_code,s.destination_name].some(v=>String(v||"").toLocaleLowerCase().includes(shipmentQuery.trim().toLocaleLowerCase()))).map(s=><button type="button" key={s.id} className={"pallet-list-row "+((selectedShipmentId&&rows("shipments").some(x=>x.id===selectedShipmentId&&!["cancelled","completed"].includes(x.status))?selectedShipmentId:rows("shipments").find(x=>!["cancelled","completed"].includes(x.status))?.id)===s.id?"selected":"")} aria-pressed={(selectedShipmentId&&rows("shipments").some(x=>x.id===selectedShipmentId&&!["cancelled","completed"].includes(x.status))?selectedShipmentId:rows("shipments").find(x=>!["cancelled","completed"].includes(x.status))?.id)===s.id} onClick={()=>setSelectedShipmentId(s.id)}><strong>{s.id.slice(0,8)}</strong><span>{s.order_code||"Unconfirmed"}</span><span>{s.destination_name||"Unconfirmed"}</span><Badge value={s.status}/><ChevronRight size={16}/></button>)}{!rows("shipments").some(s=>!["cancelled","completed"].includes(s.status)&&[s.id,s.order_code,s.destination_name].some(v=>String(v||"").toLocaleLowerCase().includes(shipmentQuery.trim().toLocaleLowerCase())))&&<p className="orders-no-results">No matching shipments. Try another search.</p>}</div></section><div className="pallet-detail-panel" aria-label="Selected shipment manifest">
                   {rows("shipments")
-                    .filter(
-                      (s) => !["cancelled", "completed"].includes(s.status),
-                    )
+                    .filter(s=>!["cancelled","completed"].includes(s.status)&&s.id===(selectedShipmentId&&rows("shipments").some(x=>x.id===selectedShipmentId&&!["cancelled","completed"].includes(x.status))?selectedShipmentId:rows("shipments").find(x=>!["cancelled","completed"].includes(x.status))?.id))
                     .map((s) => (
                       <section className="panel entity-card" key={s.id}>
                         <div className="section-head">
@@ -2465,6 +2501,7 @@ function App() {
                         )}
                       </section>
                     ))}
+                  </div></div>}
                   {!rows("shipments").filter(
                     (s) => !["cancelled", "completed"].includes(s.status),
                   ).length && (
@@ -2487,12 +2524,9 @@ function App() {
                     </span>
                   </div>
                   <div className="stack">
+                    {rows("shipments").some(s=>["dispatched","partial","completed"].includes(s.status)) && <div className="orders-workspace"><section className="panel orders-list-panel" aria-label="Delivery shipments"><div className="orders-list-header"><div><h2>Deliveries</h2><p>Select an assigned shipment to review its goods and handover.</p></div><span className="order-count">{rows("shipments").filter(s=>["dispatched","partial","completed"].includes(s.status)).length} loaded</span></div><label className="orders-search"><Search size={19}/><span className="sr-only">Search delivery shipments</span><input type="search" value={driverQuery} onChange={e=>setDriverQuery(e.target.value)} placeholder="Search order or destination…"/></label><div className="pallet-list-columns" aria-hidden="true"><span>Order</span><span>Destination</span><span>Shipment</span><span>Status</span></div><div>{rows("shipments").filter(s=>["dispatched","partial","completed"].includes(s.status)&&[s.order_code,s.destination_name,s.id].some(v=>String(v||"").toLocaleLowerCase().includes(driverQuery.trim().toLocaleLowerCase()))).map(s=><button type="button" key={s.id} className={"pallet-list-row "+((selectedDriverShipmentId&&rows("shipments").some(x=>x.id===selectedDriverShipmentId&&["dispatched","partial","completed"].includes(x.status))?selectedDriverShipmentId:rows("shipments").find(x=>["dispatched","partial","completed"].includes(x.status))?.id)===s.id?"selected":"")} aria-pressed={(selectedDriverShipmentId&&rows("shipments").some(x=>x.id===selectedDriverShipmentId&&["dispatched","partial","completed"].includes(x.status))?selectedDriverShipmentId:rows("shipments").find(x=>["dispatched","partial","completed"].includes(x.status))?.id)===s.id} onClick={()=>setSelectedDriverShipmentId(s.id)}><strong>{s.order_code||"Unconfirmed"}</strong><span>{s.destination_name||"Unconfirmed"}</span><span>{s.id.slice(0,8)}</span><Badge value={s.status}/><ChevronRight size={16}/></button>)}{!rows("shipments").some(s=>["dispatched","partial","completed"].includes(s.status)&&[s.order_code,s.destination_name,s.id].some(v=>String(v||"").toLocaleLowerCase().includes(driverQuery.trim().toLocaleLowerCase())))&&<p className="orders-no-results">No matching deliveries. Try another search.</p>}</div></section><div className="pallet-detail-panel" aria-label="Selected delivery details">
                     {rows("shipments")
-                      .filter((s) =>
-                        ["dispatched", "partial", "completed"].includes(
-                          s.status,
-                        ),
-                      )
+                      .filter(s=>["dispatched","partial","completed"].includes(s.status)&&s.id===(selectedDriverShipmentId&&rows("shipments").some(x=>x.id===selectedDriverShipmentId&&["dispatched","partial","completed"].includes(x.status))?selectedDriverShipmentId:rows("shipments").find(x=>["dispatched","partial","completed"].includes(x.status))?.id))
                       .map((s) => (
                         <section className="panel entity-card" key={s.id}>
                           <div className="section-head">
@@ -2524,6 +2558,7 @@ function App() {
                           )}
                         </section>
                       ))}
+                    </div></div>}
                     {!rows("shipments").some((s) =>
                       ["dispatched", "partial", "completed"].includes(s.status),
                     ) && (
@@ -2545,7 +2580,8 @@ function App() {
                     </span>
                   </div>
                   <div className="stack">
-                    {rows("issues").map((i) => (
+                    {rows("issues").length > 0 && <div className="orders-workspace"><section className="panel orders-list-panel" aria-label="Review issues"><div className="orders-list-header"><div><h2>Review queue</h2><p>Select an issue to review its evidence and next action.</p></div><span className="order-count">{rows("issues").length} loaded</span></div><label className="orders-search"><Search size={19}/><span className="sr-only">Search review issues</span><input type="search" value={issueQuery} onChange={e=>setIssueQuery(e.target.value)} placeholder="Search box, issue or note…"/></label><div className="pallet-list-columns" aria-hidden="true"><span>Issue</span><span>Box</span><span>Note</span><span>Status</span></div><div>{rows("issues").filter(i=>[i.kind,i.box_code,i.note].some(v=>String(v||"").toLocaleLowerCase().includes(issueQuery.trim().toLocaleLowerCase()))).map(i=><button type="button" key={i.id} className={"pallet-list-row "+((selectedIssueId&&rows("issues").some(x=>x.id===selectedIssueId)?selectedIssueId:rows("issues")[0]?.id)===i.id?"selected":"")} aria-pressed={(selectedIssueId&&rows("issues").some(x=>x.id===selectedIssueId)?selectedIssueId:rows("issues")[0]?.id)===i.id} onClick={()=>setSelectedIssueId(i.id)}><strong>{i.kind||"Unconfirmed"}</strong><span>{i.box_code||"General review"}</span><span>{i.note||"No note"}</span><Badge value={i.status}/><ChevronRight size={16}/></button>)}{!rows("issues").some(i=>[i.kind,i.box_code,i.note].some(v=>String(v||"").toLocaleLowerCase().includes(issueQuery.trim().toLocaleLowerCase())))&&<p className="orders-no-results">No matching issues. Try another search.</p>}</div></section><div className="pallet-detail-panel" aria-label="Selected review issue">
+                    {rows("issues").filter(i=>i.id===(selectedIssueId&&rows("issues").some(x=>x.id===selectedIssueId)?selectedIssueId:rows("issues")[0]?.id)).map((i) => (
                       <section className="panel issue-card" key={i.id}>
                         <span className="issue-icon">
                           <AlertTriangle size={23} />
@@ -2658,6 +2694,7 @@ function App() {
                         <Badge value={i.status} />
                       </section>
                     ))}
+                    </div></div>}
                     {!rows("issues").length && (
                       <Empty
                         title="Review queue is clear"
@@ -2675,9 +2712,9 @@ function App() {
                       Private originals are retained. Recognition produces unreviewed text only; verify quantities manually. Print box, pallet and location labels from their records.
                     </span>
                   </div>
-                  <section className="panel">
+                  {rows("documents").length > 0 && <div className="orders-workspace"><section className="panel orders-list-panel" aria-label="Documents"><div className="orders-list-header"><div><h2>Documents</h2><p>Select a document to view its original and available review actions.</p></div><span className="order-count">{rows("documents").length} loaded</span></div><label className="orders-search"><Search size={19}/><span className="sr-only">Search documents</span><input type="search" value={documentQuery} onChange={e=>setDocumentQuery(e.target.value)} placeholder="Search document name or type…"/></label><div className="pallet-list-columns" aria-hidden="true"><span>Document</span><span>Type</span><span>Size</span><span>Status</span></div><div>{rows("documents").filter(doc=>[doc.name,doc.mime].some(v=>String(v||"").toLocaleLowerCase().includes(documentQuery.trim().toLocaleLowerCase()))).map(doc=><button type="button" key={doc.id} className={"pallet-list-row "+((selectedDocumentId&&rows("documents").some(x=>x.id===selectedDocumentId)?selectedDocumentId:rows("documents")[0]?.id)===doc.id?"selected":"")} aria-pressed={(selectedDocumentId&&rows("documents").some(x=>x.id===selectedDocumentId)?selectedDocumentId:rows("documents")[0]?.id)===doc.id} onClick={()=>setSelectedDocumentId(doc.id)}><strong>{doc.name}</strong><span>{doc.mime||"Unknown"}</span><span>{doc.size!=null?(doc.size/1024).toFixed(1)+" KB":"Unknown"}</span><span>Original</span><ChevronRight size={16}/></button>)}{!rows("documents").some(doc=>[doc.name,doc.mime].some(v=>String(v||"").toLocaleLowerCase().includes(documentQuery.trim().toLocaleLowerCase())))&&<p className="orders-no-results">No matching documents. Try another search.</p>}</div></section><section className="panel pallet-detail-panel" aria-label="Selected document">
                     {rows("documents").map((doc) => (
-                      <div key={doc.id}>
+                      <div key={doc.id} hidden={doc.id !== (selectedDocumentId && rows("documents").some(x=>x.id===selectedDocumentId) ? selectedDocumentId : rows("documents")[0]?.id)}>
                       <div className="document-row">
                         <FileText size={24} />
                         <div>
@@ -2697,13 +2734,8 @@ function App() {
                       {can("receive") && <DocumentRecognition key={draftScope(user as any)+doc.id} actor={user} documentId={doc.id}/>}
                       </div>
                     ))}
-                    {!rows("documents").length && (
-                      <Empty
-                        title="No documents uploaded"
-                        text="Attach a label photo or source PDF when receiving a box."
-                      />
-                    )}
-                  </section>
+                  </section></div>}
+                  {!rows("documents").length && <Empty title="No documents uploaded" text="Attach a label photo or source PDF when receiving a box." />}
                 </>
               )}
               {page === "settings" && (
@@ -2738,14 +2770,7 @@ function App() {
                     </p>
                     <Button
                       secondary
-                      onClick={async () => {
-                        const localDrafts=(await identityDraftKeys(user as any)).length;
-                        if(localDrafts && !window.confirm(`You have ${localDrafts} saved device drafts. They are not synced. Signing out clears them. Stay signed in to finish them, or confirm to discard and sign out.`)) return;
-                        await api("/auth/logout", {});
-                        await clearIdentityDrafts(user as any);
-                        cache.clear();
-                        location.reload();
-                      }}
+                      onClick={() => void signOut(user)}
                     >
                       <LogOut size={17} /> Sign out & clear device drafts
                     </Button>
@@ -3347,7 +3372,7 @@ function Receipt({
     customerId: "",
     locationId: "",
     sourceLabel: "",
-    condition: "good",
+    condition: "",
     lines: [{ productId: "", quantity: "", verified: false }],
   });
   const [v, setV] = useState<any>(fresh),
@@ -3411,8 +3436,8 @@ function Receipt({
         <div className="notice info compact">
           <ScanLine size={19} />
           <span>
-            Camera/photo capture is available through your device chooser.
-            Automated OCR and barcode decoding are unconfigured.
+            Capture a photo with your device or enter the label manually.
+            Barcode decoding is unconfigured; document recognition availability is shown in Documents.
           </span>
         </div>
         {error && <ErrorNotice error={error} />}
@@ -4404,8 +4429,10 @@ function CountView({
           label="Count location"
           value={locationId}
           onChange={(v) => {
+            if (v !== locationId && observed.length && !window.confirm("Changing location clears the observations on this screen. Save your device draft first or cancel to keep counting here. Continue?")) return;
             setLocationId(v);
             setObserved([]);
+            setMessage("");
           }}
           options={(data.locations || []).map((l: Row) => ({
             value: l.id,
@@ -4424,6 +4451,7 @@ function CountView({
           onSubmit={(e) => {
             e.preventDefault();
             const value = code.trim();
+            if (!value) { setMessage("Enter an internal box ID before recording an observation."); return; }
             if (observed.includes(value))
               setMessage(
                 "Duplicate scan · already counted. Box total unchanged.",
@@ -4482,12 +4510,13 @@ function CountView({
             <span>observed boxes</span>
           </div>
           <div>
-            <strong>{blind ? "—" : expected.length}</strong>
-            <span>expected boxes</span>
+            <strong>{blind || !locationId ? "—" : expected.length}</strong>
+            <span>loaded expected boxes</span>
           </div>
         </div>
-        {!blind && (
+        {!blind && locationId && (
           <>
+            <p>Expected boxes are based on loaded records. Review the full count before making a correction.</p>
             <h3>Missing · {missing.length}</h3>
             {missing.map((b) => (
               <div className="soft-item" key={b.id}>

@@ -39,16 +39,26 @@ export async function api(
     throw new ApiError(
       0,
       "OFFLINE",
-      "Server connection unavailable. Your form remains on this device.",
+      "Server connection unavailable. The outcome is unconfirmed; check your saved work before retrying.",
     );
   }
-  const content = await response.json();
+  let content: any;
+  try {
+    content = await response.json();
+  } catch {
+    // Proxies can replace a committed command's response with HTML or an
+    // incomplete body. Treat every such response as uncertain, even a 4xx,
+    // so callers retain their original idempotency key for a safe retry.
+    throw new ApiError(0, "RESPONSE_UNCONFIRMED", "The server response could not be confirmed. Check the current record or retry the exact operation; keep your work on this device.");
+  }
+  if (!response.ok && (typeof content?.error?.code !== 'string' || typeof content?.error?.message !== 'string'))
+    throw new ApiError(0, "RESPONSE_UNCONFIRMED", "The server response could not be confirmed. Check the current record or retry the exact operation; keep your work on this device.");
   if (!response.ok)
     throw new ApiError(
       response.status,
-      content.error?.code || "ERROR",
-      content.error?.message || "Request failed",
-      content.error?.details,
+      content?.error?.code || "ERROR",
+      content?.error?.message || "Request failed",
+      content?.error?.details,
     );
   return content;
 }
