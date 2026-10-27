@@ -25,6 +25,7 @@ import { createApp } from "../apps/api/app.js";
 import { workOnce } from "../apps/worker/index.js";
 import { ocrStatus, extractDocument } from "../apps/worker/ocr.js";
 import { inject } from "./inject.js";
+import {inboundList,createSupplier,createExpectedReceipt,receiveExpectedBox,cancelExpectedReceipt} from '../packages/domain/inbound.js';
 process.env.NODE_ENV = "test";
 let db: DB;
 let raceDB: DB;
@@ -2199,11 +2200,14 @@ test('access: queued exports and existing document sessions fail closed after wa
  const queued=(await inject(accessApp,{method:'POST',url:'/api/v1/jobs',headers:selected.headers,body:p({kind:'inventory-export'})})).body;
  const editor=await httpSession(accessApp),grant=(await db.query("SELECT * FROM warehouse_grants WHERE user_id='demo-admin' AND warehouse_id=$1",[newWarehouse.id])).rows[0];
  let r=await inject(accessApp,{method:'POST',url:'/api/v1/access/warehouse-grants',headers:editor,body:p({userId:'demo-admin',warehouseId:newWarehouse.id,expectedVersion:grant.version,active:false,reason:'Synthetic revoked worker-access check'})});assert.equal(r.status,200);
- assert.equal((await inject(accessApp,{url:'/api/v1/boxes/'+scopedBox.id,headers:selected.headers})).status,403);
- const workspace=(await inject(accessApp,{url:'/api/v1/workspace',headers:selected.headers})).body;assert.equal(workspace.warehouse,null);assert.equal(workspace.boxes,undefined);
- for(let i=0;i<3;i++){await db.query('UPDATE jobs SET available_at=now() WHERE id=$1',[queued.id]);await workOnce(db);}
- const job=(await db.query('SELECT * FROM jobs WHERE id=$1',[queued.id])).rows[0];assert.equal(job.status,'failed');assert.equal(job.result,null);
- r=await inject(accessApp,{method:'POST',url:'/api/v1/access/warehouse-grants',headers:editor,body:p({userId:'demo-admin',warehouseId:newWarehouse.id,expectedVersion:grant.version+1,active:true,reason:'Restore synthetic test assignment'})});assert.equal(r.status,200);
+ try{
+  assert.equal((await inject(accessApp,{url:'/api/v1/boxes/'+scopedBox.id,headers:selected.headers})).status,403);
+  const workspace=(await inject(accessApp,{url:'/api/v1/workspace',headers:selected.headers})).body;assert.equal(workspace.warehouse,null);assert.equal(workspace.boxes,undefined);
+  for(let i=0;i<30;i++){await db.query('UPDATE jobs SET available_at=now() WHERE id=$1',[queued.id]);await workOnce(db);const state=(await db.query('SELECT status FROM jobs WHERE id=$1',[queued.id])).rows[0].status;if(state==='failed')break;}
+  const job=(await db.query('SELECT * FROM jobs WHERE id=$1',[queued.id])).rows[0];assert.equal(job.status,'failed');assert.equal(job.result,null);
+ }finally{
+  r=await inject(accessApp,{method:'POST',url:'/api/v1/access/warehouse-grants',headers:editor,body:p({userId:'demo-admin',warehouseId:newWarehouse.id,expectedVersion:grant.version+1,active:true,reason:'Restore synthetic test assignment'})});assert.equal(r.status,200);
+ }
 });
 test('access: restore preserves memberships, warehouses and audit scopes without duplicate bootstrap rows',async()=>{
  const source=await snapshot(db),target=await openDatabase(null,':memory:');
@@ -2226,7 +2230,7 @@ test('access: legacy v2 backup restores only its original namespace and exact ho
  }
  await seed(old);
  const {backupTables}=await import('../packages/database/backup.js');const tables:Record<string,any[]>={};
- for(const name of backupTables.filter(n=>!['warehouses','company_memberships','warehouse_grants','product_imports','product_import_items','pallet_groups','pallet_group_memberships'].includes(n)))tables[name]=(await old.query('SELECT * FROM '+name)).rows;
+ for(const name of backupTables.filter(n=>!['warehouses','company_memberships','warehouse_grants','product_imports','product_import_items','pallet_groups','pallet_group_memberships','suppliers','expected_receipts','expected_receipt_boxes'].includes(n)))tables[name]=(await old.query('SELECT * FROM '+name)).rows;
  await migrate(target);await restoreSnapshot(target,{format:'jadesun-v2',tables});
  assert.equal((await target.query('SELECT count(*)::int n FROM warehouses')).rows[0].n,1);
  assert.equal((await target.query("SELECT warehouse_id FROM boxes WHERE id='b1'")).rows[0].warehouse_id,'demo:legacy');
@@ -2340,7 +2344,7 @@ test('imports: HTTP permissions, cross-company/warehouse reads/reports/commit/li
  const list=await inject(app,{url:'/api/v1/imports/products',headers:otherWarehouse.headers});assert.ok(!list.body.items.some((r:any)=>r.id===staged.body.id));
 });
 test('imports: v4 restore retains originals/links and legacy v3 restores with empty imports',async()=>{
- const archive=await snapshot(db),target=await openDatabase(null,':memory:');assert.equal(archive.format,'jadesun-v5');
+ const archive=await snapshot(db),target=await openDatabase(null,':memory:');assert.equal(archive.format,'jadesun-v6');
  try{await migrate(target);await restoreSnapshot(target,archive);assert.equal((await reviewProductImport(target,importActor,importBatch.id)).source_csv,importBatch.source_csv);assert.equal((await target.query('SELECT count(*)::int n FROM product_import_items')).rows[0].n,archive.tables.product_import_items.length)}finally{await target.close()}
  const legacy={...archive,format:'jadesun-v3',tables:{...archive.tables}};delete legacy.tables.product_imports;delete legacy.tables.product_import_items;delete legacy.tables.pallet_groups;delete legacy.tables.pallet_group_memberships;
  const old=await openDatabase(null,':memory:');try{await migrate(old);await restoreSnapshot(old,legacy);assert.equal((await old.query('SELECT count(*)::int n FROM product_imports')).rows[0].n,0)}finally{await old.close()}
@@ -2378,7 +2382,7 @@ test('customer order form: multi-product order is atomic, scoped and idempotent'
  const outsider=await inject(app,{method:'POST',url:'/api/v1/orders',headers,body:p({customerId:'c1',destinationId:'d2',lines:[{productId:'p1',quantity:'1',unit:'piece'}]})});assert.equal(outsider.status,422);
 });
 
-import {createPalletGroup,changePalletGroup,palletGroupList} from '../packages/domain/pallet-groups.js';
+import {createPalletGroup,changePalletGroup,palletGroupList,palletGroupReconciliation} from '../packages/domain/pallet-groups.js';
 test('pallet group: multiple independent pallets, scoped, versioned and retry-safe',async()=>{
  const actor={...admin,warehouse_id:'demo:legacy'},tripId=uuid(),palletA=uuid(),palletB=uuid();
  await db.query("INSERT INTO trips(id,org_id,code,business_date,warehouse_id) VALUES($1,'demo',$2,'2026-10-28','demo:legacy')",[tripId,'QA-GROUP-'+tripId]);
@@ -2400,6 +2404,46 @@ test('pallet group: duplicate grouping and unauthorized list fail closed',async(
  assert.equal((await inject(app,{url:'/api/v1/pallet-groups',headers:operator})).status,403);
  const groups=(await inject(app,{url:'/api/v1/pallet-groups',headers})).body,g=groups.find((v:any)=>v.name==='Synthetic area group');assert.ok(g);
  const duplicate=await inject(app,{method:'POST',url:'/api/v1/pallet-groups/'+g.id+'/add',headers,body:p({expectedVersion:g.version,palletId:g.pallets[0].pallet_id,reason:'Duplicate synthetic scan'})});assert.equal(duplicate.status,409);assert.equal(duplicate.body.error.code,'GROUP_MEMBERSHIP');
+});
+test('pallet group review: distinct boxes, assignment exceptions and scoped access',async()=>{
+ const actor={...admin,warehouse_id:'demo:legacy'},trip=uuid(),other=uuid(),pal=uuid();
+ for(const id of [trip,other])await db.query("INSERT INTO trips(id,org_id,code,business_date,warehouse_id) VALUES($1,'demo',$2,'2026-10-28','demo:legacy')",[id,'REVIEW-T-'+id]);
+ await db.query("INSERT INTO pallets(id,org_id,code,location_id,warehouse_id) VALUES($1,'demo',$2,'l1','demo:legacy')",[pal,'REVIEW-P-'+pal]);
+ const group=await command(db,actor,'review-group-create',p({tripId:trip,name:'Review',reason:'Review test'}),t=>createPalletGroup(t,actor,p({tripId:trip,name:'Review',reason:'Review test'})));
+ const add=p({expectedVersion:1,palletId:pal,reason:'Review test'});await command(db,actor,'review-group-add',add,t=>changePalletGroup(t,actor,group.id,add,false));
+ const b1=uuid(),b2=uuid(),b3=uuid();for(const id of [b1,b2,b3])await db.query("INSERT INTO boxes(id,org_id,code,pallet_id,warehouse_id) VALUES($1,'demo',$2,$3,'demo:legacy')",[id,'REVIEW-B-'+id,pal]);
+ const order=(await db.query("SELECT id,destination_id FROM orders WHERE org_id='demo' AND warehouse_id='demo:legacy' LIMIT 1")).rows[0];
+ const product=(await db.query("SELECT id FROM products WHERE org_id='demo' LIMIT 1")).rows[0];assert.ok(order&&product);
+ const s1=uuid(),s2=uuid();for(const [sid,tid] of [[s1,trip],[s2,other]])await db.query("INSERT INTO shipments(id,org_id,warehouse_id,order_id,destination_id,trip_id) VALUES($1,'demo','demo:legacy',$2,$3,$4)",[sid,order.id,order.destination_id,tid]);
+ for(const [sid,bid,loaded] of [[s1,b1,true],[s1,b1,false],[s2,b2,true]] as const)await db.query("INSERT INTO shipment_lines(id,org_id,warehouse_id,shipment_id,box_id,product_id,quantity,unit,loaded) VALUES($1,'demo','demo:legacy',$2,$3,$4,1,'piece',$5)",[uuid(),sid,bid,product.id,loaded]);
+ let review=await palletGroupReconciliation(db,actor,group.id);assert.equal(review.boxes.length,3);assert.equal(review.truncated,false);
+ const byId=(id:string)=>review.boxes.find((x:any)=>x.id===id);
+ assert.equal(byId(b1).state,'same_trip');assert.equal(byId(b1).shipments.length,1);assert.equal(byId(b1).shipments[0].loaded,false);
+ assert.equal(byId(b2).state,'different_trip');assert.equal(byId(b2).shipments[0].trip_code,'REVIEW-T-'+other);assert.equal(byId(b3).state,'no_shipment');
+ const unassigned=uuid();await db.query("INSERT INTO shipments(id,org_id,warehouse_id,order_id,destination_id) VALUES($1,'demo','demo:legacy',$2,$3)",[unassigned,order.id,order.destination_id]);
+ await db.query("INSERT INTO shipment_lines(id,org_id,warehouse_id,shipment_id,box_id,product_id,quantity,unit) VALUES($1,'demo','demo:legacy',$2,$3,$4,1,'piece')",[uuid(),unassigned,b3,product.id]);
+ review=await palletGroupReconciliation(db,actor,group.id);assert.equal(byId(b3).state,'trip_unassigned');
+ await db.query("INSERT INTO shipment_lines(id,org_id,warehouse_id,shipment_id,box_id,product_id,quantity,unit) VALUES($1,'demo','demo:legacy',$2,$3,$4,1,'piece')",[uuid(),unassigned,b2,product.id]);
+ review=await palletGroupReconciliation(db,actor,group.id);assert.equal(byId(b2).state,'multiple_shipments');
+ await assert.rejects(palletGroupReconciliation(db,{...actor,warehouse_id:newWarehouse.id},group.id),(e:any)=>e.code==='NOT_FOUND');
+ const remove=p({expectedVersion:2,palletId:pal,reason:'Review test'});await command(db,actor,'review-group-remove',remove,t=>changePalletGroup(t,actor,group.id,remove,true));
+ review=await palletGroupReconciliation(db,actor,group.id);assert.equal(review.boxes.length,0);
+ const app=createApp(db,{demo:true}),operator=await httpSession(app,'demo-operator');assert.equal((await inject(app,{url:'/api/v1/pallet-groups/'+group.id+'/reconciliation',headers:operator})).status,403);
+});
+test('pallet group review pages all boxes and rejects stale or invalid cursors',async()=>{
+ const actor={...admin,warehouse_id:'demo:legacy'},trip=uuid(),pal=uuid(),prefix=uuid();
+ await db.query("INSERT INTO trips(id,org_id,code,business_date,warehouse_id) VALUES($1,'demo',$2,'2026-10-28','demo:legacy')",[trip,'PAGE-T-'+trip]);
+ await db.query("INSERT INTO pallets(id,org_id,code,location_id,warehouse_id) VALUES($1,'demo',$2,'l1','demo:legacy')",[pal,'PAGE-P-'+pal]);
+ const create=p({tripId:trip,name:'Pagination review',reason:'Review test'}),group=await command(db,actor,'page-group-create',create,t=>createPalletGroup(t,actor,create));
+ const add=p({expectedVersion:1,palletId:pal,reason:'Review test'});await command(db,actor,'page-group-add',add,t=>changePalletGroup(t,actor,group.id,add,false));
+ await db.query("INSERT INTO boxes(id,org_id,code,pallet_id,warehouse_id) SELECT $1||'-'||lpad(i::text,4,'0'),'demo',$1||'-'||lpad(i::text,4,'0'),$2,'demo:legacy' FROM generate_series(1,205) i",[prefix,pal]);
+ const first=await palletGroupReconciliation(db,actor,group.id);assert.equal(first.boxes.length,200);assert.ok(first.nextCursor);
+ const second=await palletGroupReconciliation(db,actor,group.id,first.nextCursor);assert.equal(second.boxes.length,5);assert.equal(second.nextCursor,null);
+ assert.equal(new Set([...first.boxes,...second.boxes].map((b:any)=>b.id)).size,205);
+ await assert.rejects(palletGroupReconciliation(db,actor,group.id,'not-valid!'),(e:any)=>e.code==='CURSOR');
+ await assert.rejects(palletGroupReconciliation(db,{...actor,warehouse_id:newWarehouse.id},group.id,first.nextCursor),(e:any)=>e.code==='NOT_FOUND');
+ const remove=p({expectedVersion:2,palletId:pal,reason:'Review test'});await command(db,actor,'page-group-remove',remove,t=>changePalletGroup(t,actor,group.id,remove,true));
+ await assert.rejects(palletGroupReconciliation(db,actor,group.id,first.nextCursor),(e:any)=>e.code==='VERSION_CONFLICT');
 });
 test('pallet group: backup restores active and removed membership history; v4 remains readable',async()=>{
  const archive=await snapshot(db),target=await openDatabase(null,':memory:');
@@ -2446,4 +2490,46 @@ test('recognition: Gemini adapter transmits only synthetic selected file with se
   const doc={id,storage_key:id,mime:'image/png',sha256:createHash('sha256').update(bytes).digest('hex')};const out=await extractDocument(doc,'gemini',temp);assert.equal(out.text,'SYNTHETIC BOX 0042');assert.equal(out.reviewState,'unreviewed');assert.equal(called,1);
   globalThis.fetch=async()=>new Response('',{status:401});await assert.rejects(extractDocument(doc,'gemini',temp),(e:any)=>e.code==='OCR_PROVIDER_REJECTED');
  } finally {globalThis.fetch=oldFetch;if(oldKey===undefined)delete process.env.GEMINI_API_KEY;else process.env.GEMINI_API_KEY=oldKey;if(oldModel===undefined)delete process.env.GEMINI_MODEL;else process.env.GEMINI_MODEL=oldModel;await rm(temp,{recursive:true,force:true})}
+});
+
+test('inbound: expected receipt, partial boxes, hold, retry and recovery',async()=>{
+ const actor={...admin,warehouse_id:'demo:legacy'},productId=uuid();
+ await db.query("INSERT INTO products(id,org_id,sku,name,profile,unit) VALUES($1,'demo',$2,'Synthetic inbound','General goods','piece')",[productId,'IN-'+productId]);
+ const sp=p({code:'SUP-'+uuid(),name:'Synthetic supplier'}),supplier=await command(db,actor,'supplier-create',sp,t=>createSupplier(t,actor,sp));
+ const ep=p({supplierId:supplier.id,productId,reference:'Synthetic expected order',expectedDate:'2026-11-04',quantity:'10',unit:'piece'});
+ const expected=await command(db,actor,'expected-create',ep,t=>createExpectedReceipt(t,actor,ep));
+ assert.equal((await db.query('SELECT count(*)::int n FROM expected_receipt_boxes WHERE expected_receipt_id=$1',[expected.id])).rows[0].n,0);
+ const receive=p({expectedVersion:1,locationId:'l1',quantity:'4',condition:'good',sourceLabel:''});
+ const result=await command(db,actor,'expected-receive:'+expected.id,receive,t=>receiveExpectedBox(t,actor,expected.id,receive));
+ const retry=await command(db,actor,'expected-receive:'+expected.id,receive,t=>receiveExpectedBox(t,actor,expected.id,receive));assert.equal(result.box.id,retry.box.id);assert.equal(result.box.status,'confirmed');
+ const held=p({expectedVersion:2,locationId:'l1',quantity:'3',condition:'damaged',sourceLabel:'Synthetic damage'});
+ const hr=await command(db,actor,'expected-receive:'+expected.id,held,t=>receiveExpectedBox(t,actor,expected.id,held));assert.equal(hr.box.status,'hold');
+ let row=(await inboundList(db,actor)).expectations.find((x:any)=>x.id===expected.id);assert.equal(row.received,'7.000000');assert.equal(row.outstanding,'3');assert.equal(row.held,'3.000000');
+ const over=p({expectedVersion:3,locationId:'l1',quantity:'4',condition:'good',sourceLabel:''});await assert.rejects(command(db,actor,'expected-receive:'+expected.id,over,t=>receiveExpectedBox(t,actor,expected.id,over)),(e:any)=>e.code==='OVER_RECEIPT');
+ const stale=p({expectedVersion:1,locationId:'l1',quantity:'1',condition:'good',sourceLabel:''});await assert.rejects(command(db,actor,'expected-receive:'+expected.id,stale,t=>receiveExpectedBox(t,actor,expected.id,stale)),(e:any)=>e.code==='VERSION_CONFLICT');
+ await assert.rejects(receiveExpectedBox(db,{...actor,warehouse_id:'other-warehouse'},expected.id,stale),(e:any)=>e.code==='NOT_FOUND');
+ await assert.rejects(createExpectedReceipt(db,actor,{...ep,unit:'kg'}),(e:any)=>e.code==='UNIT_MISMATCH');
+ await assert.rejects(db.query('UPDATE expected_receipt_boxes SET quantity=8 WHERE expected_receipt_id=$1',[expected.id]),/immutable/);
+ await assert.rejects(db.query('UPDATE expected_receipts SET quantity=12 WHERE id=$1',[expected.id]),/immutable/);
+ const app=createApp(db,{demo:true}),operator=await httpSession(app,'demo-operator'),driver=await httpSession(app,'demo-driver');
+ assert.equal((await inject(app,{url:'/api/v1/inbound',headers:driver})).status,403);
+ assert.equal((await inject(app,{method:'POST',url:'/api/v1/suppliers',headers:operator,body:p({code:'NO',name:'Not authorised'})})).status,403);
+ assert.equal((await inject(app,{url:'/api/v1/inbound',headers:operator})).status,200);
+ const traced=uuid();await db.query("INSERT INTO products(id,org_id,sku,name,profile,unit,traceability_confirmed,require_lot) VALUES($1,'demo',$2,'Synthetic tracked','General goods','piece',true,true)",[traced,'TRACE-IN-'+traced]);
+ const tracePlan=p({supplierId:supplier.id,productId:traced,reference:'Tracked test',expectedDate:'2026-11-04',quantity:'2',unit:'piece'}),traceExpected=await command(db,actor,'expected-create',tracePlan,t=>createExpectedReceipt(t,actor,tracePlan));
+ const damaged=p({expectedVersion:1,locationId:'l1',quantity:'1',condition:'damaged',sourceLabel:''}),damagedBox=await command(db,actor,'expected-receive:'+traceExpected.id,damaged,t=>receiveExpectedBox(t,actor,traceExpected.id,damaged));assert.equal(damagedBox.box.status,'hold');
+ const unknownLot=p({expectedVersion:2,locationId:'l1',quantity:'1',condition:'good',sourceLabel:''}),pendingBox=await command(db,actor,'expected-receive:'+traceExpected.id,unknownLot,t=>receiveExpectedBox(t,actor,traceExpected.id,unknownLot));assert.equal(pendingBox.box.status,'unconfirmed');
+ const archive=await snapshot(db),target=await openDatabase(null,':memory:');try{await migrate(target);await restoreSnapshot(target,archive);row=(await inboundList(target,actor)).expectations.find((x:any)=>x.id===expected.id);assert.equal(row.received,'7.000000');assert.equal(row.outstanding,'3')}finally{await target.close()}
+ const cancel=p({expectedVersion:3,reason:'Supplier confirmed no further delivery'}),canceled=await command(db,actor,'expected-cancel:'+expected.id,cancel,t=>cancelExpectedReceipt(t,actor,expected.id,cancel));assert.equal(canceled.cancelledQuantity,'3');
+ const repeated=await command(db,actor,'expected-cancel:'+expected.id,cancel,t=>cancelExpectedReceipt(t,actor,expected.id,cancel));assert.equal(repeated.version,canceled.version);
+ row=(await inboundList(db,actor)).expectations.find((x:any)=>x.id===expected.id);assert.equal(row.cancelled,true);assert.equal(row.cancellation_reason,'Supplier confirmed no further delivery');assert.equal(row.received,'7.000000');assert.equal(row.outstanding,'0');assert.equal(row.cancelled_quantity,'3');
+ assert.equal((await owned(db,'boxes',result.box.id,actor)).status,'confirmed');assert.equal((await owned(db,'boxes',hr.box.id,actor)).status,'hold');
+ const afterCancel=p({expectedVersion:canceled.version,locationId:'l1',quantity:'1',condition:'good',sourceLabel:''});await assert.rejects(command(db,actor,'expected-receive:'+expected.id,afterCancel,t=>receiveExpectedBox(t,actor,expected.id,afterCancel)),(e:any)=>e.code==='EXPECTED_CANCELLED');
+ await assert.rejects(cancelExpectedReceipt(db,actor,expected.id,p({expectedVersion:3,reason:'Stale cancellation'})),(e:any)=>e.code==='VERSION_CONFLICT');
+ await assert.rejects(cancelExpectedReceipt(db,actor,expected.id,p({expectedVersion:canceled.version,reason:'Duplicate cancellation'})),(e:any)=>e.code==='EXPECTED_CANCELLED');
+ await assert.rejects(cancelExpectedReceipt(db,actor,traceExpected.id,p({expectedVersion:3,reason:'Already received'})),(e:any)=>e.code==='EXPECTED_COMPLETE');
+ assert.equal((await inject(app,{method:'POST',url:'/api/v1/expected-receipts/'+expected.id+'/cancel',headers:operator,body:p({expectedVersion:canceled.version,reason:'Not authorized'})})).status,403);
+ await assert.rejects(cancelExpectedReceipt(db,{...actor,warehouse_id:'other-warehouse'},expected.id,p({expectedVersion:canceled.version,reason:'Cross warehouse attempt'})),(e:any)=>e.code==='NOT_FOUND');
+ await assert.rejects(db.query("DELETE FROM inventory_events WHERE entity_id=$1 AND kind='inbound.expectation_cancelled'",[expected.id]),/immutable/);
+ const archive2=await snapshot(db),target2=await openDatabase(null,':memory:');try{await migrate(target2);await restoreSnapshot(target2,archive2);row=(await inboundList(target2,actor)).expectations.find((x:any)=>x.id===expected.id);assert.equal(row.cancelled_quantity,'3');assert.equal(row.outstanding,'0');}finally{await target2.close()}
 });

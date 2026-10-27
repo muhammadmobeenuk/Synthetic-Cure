@@ -278,7 +278,7 @@ export const services = {
       ],
     );
     await putContents(t, a, id, p.contents);
-    if ((await traceabilityProblems(t, a, id)).length)
+    if (p.condition === 'good' && (await traceabilityProblems(t, a, id)).length)
       await t.query("UPDATE boxes SET status='unconfirmed' WHERE id=$1", [id]);
     await event(t, a, id, "box.received", {
       code,
@@ -333,12 +333,12 @@ export const services = {
     await t.query("DELETE FROM contents WHERE box_id=$1", [id]);
     await putContents(t, a, id, p.contents);
     await t.query("UPDATE boxes SET status=$1,version=version+1 WHERE id=$2", [
-      p.contents.every((c: any) => c.verified) && b.condition === "good"
+      b.condition !== 'good' ? 'hold' : p.contents.every((c: any) => c.verified)
         ? "confirmed"
         : "unconfirmed",
       id,
     ]);
-    if ((await traceabilityProblems(t, a, id)).length)
+    if (b.condition === 'good' && (await traceabilityProblems(t, a, id)).length)
       await t.query("UPDATE boxes SET status='unconfirmed' WHERE id=$1", [id]);
     await invalidate(t, a, id);
     await event(t, a, id, "box.contents_confirmed", {

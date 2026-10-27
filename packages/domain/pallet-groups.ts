@@ -9,6 +9,42 @@ export async function palletGroupList(t:DB,a:Actor){
  const members=(await t.query(`SELECT m.group_id,m.pallet_id,p.code,p.location_id,l.code location_code,p.manifest_revision,p.checked_revision,(SELECT count(*)::int FROM boxes b WHERE b.pallet_id=p.id AND b.warehouse_id=m.warehouse_id) box_count FROM pallet_group_memberships m JOIN pallets p ON p.id=m.pallet_id AND p.warehouse_id=m.warehouse_id JOIN locations l ON l.id=p.location_id WHERE m.org_id=$1 AND m.warehouse_id=$2 AND m.removed_at IS NULL ORDER BY p.code,p.id`,[a.org_id,a.warehouse_id])).rows;
  return groups.map(g=>({...g,pallets:members.filter(m=>m.group_id===g.id)}));
 }
+// A planning snapshot, not a load approval. One physical box is counted once even
+// when its shipment contains several product lines.
+export async function palletGroupReconciliation(t:DB,a:Actor,id:string,cursor?:unknown){
+ authorize(a,'dispatch');requireRule(a.warehouse_id,'WAREHOUSE_ACCESS','Select an assigned warehouse',403);
+ const group=await owned(t,'pallet_groups',id,a);
+ let after='';
+ if(cursor!==undefined){
+  requireRule(typeof cursor==='string'&&cursor.length>0&&cursor.length<=1024&&/^[A-Za-z0-9_-]+$/.test(cursor),'CURSOR','Invalid review cursor',400);
+  let parsed:any;try{parsed=JSON.parse(Buffer.from(cursor as string,'base64url').toString('utf8'));}catch{requireRule(false,'CURSOR','Invalid review cursor',400);}
+  requireRule(parsed&&parsed.groupId===id&&typeof parsed.after==='string'&&parsed.after.length>0&&parsed.after.length<=200&&Number.isSafeInteger(parsed.version),'CURSOR','Invalid review cursor',400);
+  requireRule(parsed.version===group.version,'VERSION_CONFLICT','Pallet group changed. Restart the review.',409);
+  after=parsed.after;
+ }
+ const boxes=(await t.query(`SELECT b.id,b.code,b.status,b.pallet_id,p.code pallet_code,p.manifest_revision,p.checked_revision
+ FROM pallet_group_memberships m JOIN pallets p ON p.id=m.pallet_id AND p.org_id=m.org_id AND p.warehouse_id=m.warehouse_id
+ JOIN boxes b ON b.pallet_id=p.id AND b.org_id=m.org_id AND b.warehouse_id=m.warehouse_id
+ WHERE m.group_id=$1 AND m.org_id=$2 AND m.warehouse_id=$3 AND m.removed_at IS NULL AND b.id>$4
+ ORDER BY b.id LIMIT 201`,[id,a.org_id,a.warehouse_id,after])).rows;
+ const visible=boxes.slice(0,200), ids=visible.map(b=>b.id);
+ const assignments=ids.length?(await t.query(`SELECT sl.box_id,s.id shipment_id,s.trip_id,tr.code trip_code,s.status shipment_status,
+ o.code order_code,c.name customer_name,d.name destination_name,BOOL_AND(sl.loaded) loaded
+ FROM shipment_lines sl JOIN shipments s ON s.id=sl.shipment_id AND s.org_id=sl.org_id AND s.warehouse_id=sl.warehouse_id
+ JOIN orders o ON o.id=s.order_id AND o.org_id=s.org_id AND o.warehouse_id=s.warehouse_id
+ JOIN customers c ON c.id=o.customer_id AND c.org_id=o.org_id
+ JOIN destinations d ON d.id=s.destination_id AND d.org_id=s.org_id
+ LEFT JOIN trips tr ON tr.id=s.trip_id AND tr.org_id=s.org_id AND tr.warehouse_id=s.warehouse_id
+ WHERE sl.org_id=$1 AND sl.warehouse_id=$2 AND sl.box_id=ANY($3::text[])
+ AND s.status IN ('ready','needs_recheck','dispatched','partial')
+ GROUP BY sl.box_id,s.id,s.trip_id,tr.code,s.status,o.code,c.name,d.name ORDER BY sl.box_id,s.id`,[a.org_id,a.warehouse_id,ids])).rows:[];
+ const nextCursor=boxes.length>200?Buffer.from(JSON.stringify({groupId:id,version:group.version,after:visible[visible.length-1].id})).toString('base64url'):null;
+ return {groupId:group.id,groupVersion:group.version,tripId:group.trip_id,truncated:boxes.length>200,nextCursor,boxes:visible.map(b=>{
+  const shipments=assignments.filter(s=>s.box_id===b.id);
+  const state=shipments.length===0?'no_shipment':shipments.length>1?'multiple_shipments':!shipments[0].trip_id?'trip_unassigned':shipments[0].trip_id===group.trip_id?'same_trip':'different_trip';
+  return {...b,state,shipments};
+ })};
+}
 export async function createPalletGroup(t:DB,a:Actor,payload:unknown){
  authorize(a,'dispatch');const p=palletGroupCreate.parse(payload);requireRule(a.warehouse_id,'WAREHOUSE_ACCESS','Select an assigned warehouse',403);
  const trip=await owned(t,'trips',p.tripId,a,true);requireRule(trip.status==='planned','TRIP_STATE','Choose a planned trip');const id=uuid();

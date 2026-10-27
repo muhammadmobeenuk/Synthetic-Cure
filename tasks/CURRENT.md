@@ -1,5 +1,51 @@
-# Active slice · creator attribution
+# Active slice · cancel outstanding expected inbound
 
-Acceptance: show the provided MM symbol with readable “Created by Mobeen” on the staff sign-in screen and workspace sidebar. Keep Synthetic Cure as the product name, preserve all controls and business behavior, and avoid using the separate artwork labelled for another product. Symbol is decorative to assistive technology because the creator text is present.
+Acceptance: supervisor/administrator can cancel the unreceived portion of an expected receipt with a reason and expected version; existing boxes, stock, held quantities and receipt history remain untouched. Show canceled quantity separately and zero outstanding to receive. Cancellation is an immutable business event and is safe to retry with the same operation ID. Receiving after cancellation must fail.
 
-Recovery and verification: creator credit must not block sign-in, obscure mobile navigation, change stored data, or require a network request to an outside site. Verify build/typecheck and inspect the demo sign-in and workspace on desktop; note mobile visual limits. Update state and private demo after checking.
+Failure/recovery: reject stale version, unauthorized actors, foreign warehouse, already canceled and fully received expectations. Lock the expectation so cancellation cannot race a receipt. A lost response retains the pending operation; a structured rejection allows review and correction. Do not infer a supplier return or delete prior records. Existing fonts and navigation stay unchanged.
+
+Verification: partial receipt followed by cancellation, exact replay, 409 stale/second cancellation, receiving after cancellation, permission and scope, immutable event/uniqueness, backup/restore; separately note native PostgreSQL and browser status.
+
+## Previous slice · expected inbound, one product per expectation
+
+Acceptance: authorized staff create a supplier and a dated expected receipt for one product in its confirmed base unit, then receive one or more physical boxes against it. Each receipt records verified quantity, condition and location; received quantities cannot exceed expectation; duplicate command replays return the same result; uncertain or held goods remain unavailable under existing rules. Show expected, received, held, pending confirmation and outstanding separately. No stock is created by planning. Audit and backup the new records. UI retains existing fonts/navigation.
+
+Failure/recovery: reject stale version, foreign supplier/product/location, unsupported units, duplicate supplier code, over-receipt or invalid quantities transactionally; preserve pending form data on failure. No invented supplier identity, arrival, stock, conversion or prices. Unexpected delivery and over-receipt approvals remain separate future workflows, as do multi-line purchase orders and supplier returns.
+
+Verify migration, company/warehouse scope, partial/held receipt, replay, over-receipt, stale writes and backup/restore; browser and native PostgreSQL separately.
+
+## Previous slice · uncertain server responses
+
+Acceptance: malformed, empty or non-JSON API responses never appear as confirmed success. Return a clear recoverable error that does not classify an uncertain mutation as a definitive client rejection; retain existing operation IDs and device drafts for safe replay. Preserve structured server errors and successful JSON responses. Do not display untrusted HTML. Keep current interface, fonts and navigation.
+
+Failure/recovery: a server can commit before its reply is lost or replaced by an intermediary. Tell staff the outcome is unconfirmed and direct them to retry the exact operation or check its status. A bad response to a read also reports a failure. A failed device save must not be described as saved. Automatic offline sync remains out of scope.
+
+Verify success, structured errors, 4xx/5xx HTML, malformed 2xx, empty response and network failure; run full regression/typecheck/build. Native PostgreSQL and browser verification separately reported.
+
+## Previous slice · pallet-group review pagination
+
+Acceptance: dispatch staff can page through every box in a group using a bounded, deterministic cursor; distinguish page end from an empty group; explicitly warn the review is live and must be restarted after changes. Invalid or stale-group cursors produce a recoverable error. Every request checks active company, warehouse and dispatch access. A failed page retains the option to retry or restart. Keep navigation, fonts, planning-only semantics, and authoritative dispatch checks unchanged.
+
+Failure/recovery: box moves and shipment changes can occur between page requests; pages are not a frozen manifest and cannot be used as a load approval. If membership changes, reject the stale cursor and restart. Do not expose another company's cached page after switching context.
+
+Verify: more than 200 boxes, no repeated or missing boxes in an unchanged fixture, malformed and stale cursors, authorization and regression build/tests. Native PostgreSQL, visual-device and live-preview status must be reported separately.
+
+## Previous slice · pallet-group shipment reconciliation
+
+Acceptance: authorized dispatch staff can review the current shipment/trip and loaded state of each physical box on grouped pallets. Show unassigned, matching trip, different trip and multiple active assignments explicitly; deduplicate multiple product lines per box/shipment. The view is read-only, bounded, warehouse-scoped, and clearly states it does not approve a load or dispatch. Mixed customers and destinations are allowed. Grouping is not physical nesting.
+
+Failure/recovery: show retry on request failure and clearly mark a truncated result; do not infer an empty manifest when a request fails. Existing load/dispatch checks remain authoritative. No new block or stock mutation from planning information.
+
+Relevant: packages/domain/pallet-groups.ts, apps/api/app.ts, apps/web/src/PalletGroups.tsx, tests/workflows.test.ts, docs/CONTRACTS.md. Verify isolated scope, line deduplication, changed membership and unassigned/other trip cases; run regression checks.
+
+## Previous slice · protect work on sign-out
+
+Acceptance: capture open registered forms before checking unsynced drafts; warn before discarding; abort sign-out when device capture or draft lookup fails; never clear device drafts when server sign-out fails. Preserve existing fonts and navigation. A sign-out clears confirmed local drafts only after server confirmation.
+
+Failure/recovery: if device storage fails, keep the page open and show a retry message. If the user cancels, do not sign out or clear drafts. If the server cannot confirm sign-out, retain drafts and report the error. If local cleanup fails after sign-out, report that device data may remain and do not claim removal.
+
+Relevant files: apps/web/src/work-preservation.ts, apps/web/src/main.tsx, tests/signout.test.ts. Verify the decision sequence and existing regression suite; record browser and native database limits.
+
+## Previous slice · order entry and scrollbars
+
+Keep fonts/navigation. Improve staff order entry with searchable bilingual SKU choices, accurate unit labels, clear positive quantity validation and destination recheck on customer changes without assuming relationships. Preserve drafts, retry/idempotency and server validation. Hide scrollbar chrome but retain scrolling and keyboard focus. Do not infer pack conversions or stock. Verify build, browser form/filter/validation, and existing tests where applicable; record limits.

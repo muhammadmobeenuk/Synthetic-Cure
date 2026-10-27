@@ -24,3 +24,7 @@ packages/domain/csv.ts, imports.ts: bounded CSV parser, validation, private pers
 packages/contracts/imports.ts: product/import schemas and supported units/profiles.
 apps/web/src/ProductImport.tsx: source/mapping, review, error reports and batch/device recovery.
 packages/database/migrations/012_product_imports.sql: immutable source and typed import-product provenance links.
+
+packages/contracts/inbound.ts, packages/domain/inbound.ts: scoped supplier and one-product expected receipt contracts and commands.
+packages/database/migrations/014_inbound.sql: supplier, expectation and immutable physical box receipt links.
+apps/web/src/Inbound.tsx: expected-arrival planning and physical box receipt on Receive & scan.

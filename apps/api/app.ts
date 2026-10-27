@@ -1,6 +1,8 @@
 import {ocrStatus} from '../worker/ocr.js';
+import {inboundList,createSupplier,createExpectedReceipt,receiveExpectedBox,cancelExpectedReceipt} from '../../packages/domain/inbound.js';
+import {supplierCreate,expectedCreate,expectedReceive,expectedCancel} from '../../packages/contracts/inbound.js';
 import {workerOrderSheet} from '../../packages/domain/worker-sheet.js';
-import {palletGroupList,createPalletGroup,changePalletGroup} from '../../packages/domain/pallet-groups.js';
+import {palletGroupList,palletGroupReconciliation,createPalletGroup,changePalletGroup} from '../../packages/domain/pallet-groups.js';
 import {previewProductImport,reviewProductImport,commitProductImport,listProductImports} from '../../packages/domain/imports.js';
 import {errorCsv} from '../../packages/domain/csv.js';
 import {productImportPreview,productImportCommit,importedProduct} from '../../packages/contracts/imports.js';
@@ -1277,6 +1279,12 @@ export function createApp(
   app.get('/api/v1/imports/products/:id',async(req,res)=>res.json(await reviewProductImport(db,req.actor,String(req.params.id))));
   app.get('/api/v1/imports/products/:id/errors.csv',async(req,res)=>{const report=await reviewProductImport(db,req.actor,String(req.params.id));res.type('text/csv').setHeader('Content-Disposition','attachment; filename="product-import-errors.csv"');res.send(errorCsv(report));});
   app.get('/api/v1/pallet-groups',async(req,res)=>res.json(await palletGroupList(db,req.actor)));
+  app.get('/api/v1/inbound',async(req,res)=>res.json(await inboundList(db,req.actor)));
+  app.post('/api/v1/suppliers',run(supplierCreate,'configure',()=> 'supplier-create',(t,a,p)=>createSupplier(t,a,p)));
+  app.post('/api/v1/expected-receipts',run(expectedCreate,'receive',()=> 'expected-create',(t,a,p)=>createExpectedReceipt(t,a,p)));
+  app.post('/api/v1/expected-receipts/:id/receive',run(expectedReceive,'receive',r=>'expected-receive:'+r.params.id,(t,a,p,r)=>receiveExpectedBox(t,a,String(r.params.id),p)));
+  app.post('/api/v1/expected-receipts/:id/cancel',run(expectedCancel,'adjust',r=>'expected-cancel:'+r.params.id,(t,a,p,r)=>cancelExpectedReceipt(t,a,String(r.params.id),p)));
+  app.get('/api/v1/pallet-groups/:id/reconciliation',async(req,res)=>res.json(await palletGroupReconciliation(db,req.actor,String(req.params.id),req.query.cursor)));
   app.post('/api/v1/pallet-groups',run(schemas.palletGroupCreate,'dispatch',()=> 'pallet-group-create',(t,a,p)=>createPalletGroup(t,a,p)));
   app.post('/api/v1/pallet-groups/:id/add',run(schemas.palletGroupChange,'dispatch',r=>'pallet-group-add:'+r.params.id,(t,a,p,r)=>changePalletGroup(t,a,String(r.params.id),p,false)));
   app.post('/api/v1/pallet-groups/:id/remove',run(schemas.palletGroupChange,'dispatch',r=>'pallet-group-remove:'+r.params.id,(t,a,p,r)=>changePalletGroup(t,a,String(r.params.id),p,true)));
