@@ -57,18 +57,7 @@ import {
   Undo2,
   Box,
   LoaderCircle,
-  Bell,
-  CircleHelp,
-  List as ListIcon,
 } from "lucide-react";
-import {
-  SyntheticCureLogo,
-  ScTodayDashboard,
-  ScReceiveScanView,
-  ScInventoryView,
-  ScBoxDetailView,
-  ScHelpModal,
-} from "./ScreenshotViews";
 import {
   api,
   ApiError,
@@ -310,8 +299,7 @@ function App() {
     [selectedOrderId, setSelectedOrderId] = useState<string | null>(null),
     [orderQuery, setOrderQuery] = useState(""),
     [selectedPalletId, setSelectedPalletId] = useState<string | null>(null),
-    [palletQuery, setPalletQuery] = useState(""),
-    [helpOpen, setHelpOpen] = useState(false);
+    [palletQuery, setPalletQuery] = useState("");
   useEffect(() => {
     const change = () => setPage(location.hash.slice(1) || "overview");
     const on = () => setOnline(navigator.onLine);
@@ -1032,148 +1020,185 @@ function App() {
     </div>
   );
   return (
-    <div className="sc-root-container">
-      {/* Screenshot Global Topbar */}
-      <header className="sc-topbar">
-        <div className="sc-topbar-left">
+    <div className="app-shell">
+      <aside className={"sidebar " + (menu ? "open" : "")}>
+        <a href="#overview" className="brand" onClick={e=>{e.preventDefault();void go("overview");}}>
+          <span className="brand-icon">
+            <Boxes size={23} />
+          </span>
+          <span>
+            Synthetic Cure<small>WAREHOUSE OPERATIONS</small>
+          </span>
+        </a>
+        <button type="button" className="warehouse-switch" onClick={()=>go("settings")} aria-label="Choose company or warehouse">
+          <span className="tiny-square" />
+          <div>
+            {d.warehouse?.name || "No assigned warehouse"}
+            <small>
+              {d.demo ? "Synthetic workspace" : "Internal workspace"}
+            </small>
+          </div>
+          <ChevronRight size={14} />
+        </button>
+        <p className="nav-heading">WORKSPACE</p>
+        <nav>
+          {nav
+            .filter(
+              (n) =>
+                user.role !== "driver" ||
+                ["driver", "trips", "settings"].includes(n[0]),
+            )
+            .map(([key, label, Icon]) => (
+              <button
+                key={key}
+                onClick={() => go(key)}
+                className={"nav-link " + (page === key ? "active" : "")}
+                aria-current={page === key ? "page" : undefined}
+              >
+                <Icon size={18} />
+                <span>{label}</span>
+                {key === "review" &&
+                  rows("issues").some((i) => i.status === "open") && (
+                    <b>
+                      {rows("issues").filter((i) => i.status === "open").length}
+                    </b>
+                  )}
+              </button>
+            ))}
+        </nav>
+        <div className="sidebar-bottom">
+          <div className="live-dot" />{" "}
+          {online ? "Server connection available" : "Offline · drafts only"}
+          <small>{session.data.database}</small>
+        </div>
+        <button className="user-menu" onClick={() => go("settings")}>
+          <span className="avatar">{user.name.slice(0, 2).toUpperCase()}</span>
+          <span>
+            {user.name}
+            <small>{user.role}</small>
+          </span>
+          <Settings size={16} />
+        </button>
+        <CreatorCredit dark />
+      </aside>
+      <div className="main-shell">
+        <header className="topbar">
           <button
-            type="button"
             className="icon-button mobile-menu"
             aria-label="Open navigation"
             onClick={() => setMenu(!menu)}
           >
-            <Menu size={22} style={{ color: "#e2eceb" }} />
+            <Menu size={22} />
           </button>
-          <a
-            href="#overview"
-            className="sc-logo-brand"
-            onClick={(e) => {
-              e.preventDefault();
-              setDetail(null);
-              void go("overview");
-            }}
-          >
-            <SyntheticCureLogo size={26} />
-            <span className="sc-logo-text">Synthetic Cure</span>
-          </a>
-          <span className="sc-demo-badge">DEMO DATA</span>
-        </div>
-
-        <div className="sc-topbar-center">
-          <div className="sc-topbar-search">
-            <Search size={16} />
-            <input
-              type="text"
-              placeholder="Search orders, customers, SKUs or locations..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              aria-label="Search orders, customers, SKUs or locations"
-            />
+          <div className="breadcrumb">
+            Workspace <ChevronRight size={14} />
+            <strong>{title}</strong>
           </div>
-        </div>
-
-        <div className="sc-topbar-right">
-          <button
-            type="button"
-            className="sc-icon-btn"
-            aria-label="Notifications"
-            onClick={() => setToast("No new notifications")}
-          >
-            <Bell size={18} />
-            <span className="sc-notification-dot" />
-          </button>
-
-          <div
-            className="sc-user-profile"
-            onClick={() => {
-              setDetail(null);
-              void go("settings");
-            }}
-            role="button"
-            tabIndex={0}
-            aria-label="User settings"
-          >
-            <span className="sc-user-avatar">
-              {user.name ? user.name.slice(0, 2).toUpperCase() : "JD"}
-            </span>
-            <div className="sc-user-info">
-              <span className="sc-user-name">
-                {user.name && user.name !== "Administrator"
-                  ? user.name
-                  : "Jamie Doe"}
-              </span>
-              <span className="sc-user-role">
-                {d.warehouse?.name
-                  ? d.warehouse.name.split(" ")[0] + " Warehouse"
-                  : "Warehouse"}
+          <span className="top-date">
+            {new Intl.DateTimeFormat(d.configuration?.date_format === "iso" ? "en-CA" : "en-GB", {
+              year: "numeric",month:"2-digit",day:"2-digit",
+              timeZone: d.configuration?.timezone || "UTC",
+            }).format(new Date())}
+          </span>
+          <span className="status-pill">
+            <span className="live-dot" />
+            {online ? "Online" : "Offline"}
+          </span>
+          <span className="avatar small">
+            {user.name.slice(0, 2).toUpperCase()}
+          </span>
+        </header>
+        <main className="main-content">
+          {ws.error instanceof ApiError && ws.error.code==="CONTEXT_CHANGED" && <div className="notice error"><span>Workspace changed. Your form values remain associated with the original context.</span><button className="btn secondary" onClick={async()=>{try{await preservePendingWork();setDialog(null);setDetail(null);await session.refetch();location.hash="settings";setPage("settings");}catch{setToast("Keep this page open: device storage could not preserve your work.");}}}>Preserve work & reopen session</button></div>}
+          {d.demo && (
+            <div className="demo-banner">
+              <ShieldCheck size={16} />
+              <span>
+                <strong>Synthetic demo</strong> · Sample stock, customers and
+                locations. No real operational data.
               </span>
             </div>
+          )}
+          {!online && (
+            <div className="notice warning">
+              <WifiOff size={20} />
+              <span>
+                Offline. Server changes require a connection. Save permitted
+                work as a draft on this device.
+              </span>
+            </div>
+          )}
+          <div className="page-heading">
+            <div>
+              <div className="eyebrow">{d.configuration?.display_name || "WAREHOUSE OPERATIONS"}</div>
+              <h1>{title}</h1>
+              <p>
+                {page === "overview"
+                  ? "A clear view of your warehouse. The next action, always in sight."
+                  : page === "preparation"
+                    ? "Prepare by date. Keep delivery planning separate."
+                    : page === "receive"
+                      ? "Give every physical box a traceable identity."
+                      : page === "dispatch"
+                        ? "Verify the manifest before handing over custody."
+                        : "Verified records. Clear quantities. Traceable actions."}
+              </p>
+            </div>
+            <div className="heading-actions">
+              {page === "overview" || page === "boxes"
+                ? can("receive") && (
+                    <Button onClick={() => go("receive")}>
+                      <Plus size={18} /> Receive goods
+                    </Button>
+                  )
+                : page === "pallets"
+                  ? can("pack") && (
+                      <Button
+                        onClick={() =>
+                          open({
+                            title: "Build a pallet",
+                            fields: [
+                              {
+                                key: "locationId",
+                                label: "Physical location",
+                                options: opts("locations"),
+                                required: true,
+                              },
+                            ],
+                            submit: (v, op) => mutate("/pallets", v, op),
+                          })
+                        }
+                      >
+                        <Plus size={18} /> New pallet
+                      </Button>
+                    )
+                  : page === "orders"
+                    ? can("order") && (
+                        <Button onClick={() => setOrderForm(true)}>
+                          <Plus size={18} /> New order
+                        </Button>
+                      )
+                    : page === "preparation"
+                      ? can("prepare") && (
+                          <Button onClick={batch}>
+                            <Plus size={18} /> New preparation batch
+                          </Button>
+                        )
+                      : page === "trips"
+                        ? can("dispatch") && (
+                            <Button onClick={newTrip}>
+                              <Plus size={18} /> Plan trip
+                            </Button>
+                          )
+                        : page === "review"
+                          ? can("review") && (
+                              <Button onClick={() => report()}>
+                                <Plus size={18} /> Report issue
+                              </Button>
+                            )
+                          : null}
+            </div>
           </div>
-        </div>
-      </header>
-
-      <div className="sc-body-shell">
-        <aside className={"sc-sidebar " + (menu ? "open" : "")}>
-          <div className="sc-nav-group">
-            {[
-              ["overview", "Today", CalendarDays],
-              ["receive", "Receive", ScanLine],
-              ["boxes", "Inventory", Boxes],
-              ["orders", "Orders", FileText],
-              ["preparation", "Preparation", ClipboardList],
-              ["pallets", "Pallets", Layers],
-              ["dispatch", "Dispatch", Truck],
-            ].map(([key, label, Icon]: any) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => {
-                  setDetail(null);
-                  void go(key);
-                }}
-                className={
-                  "sc-nav-link " + (page === key && !detail ? "active" : "")
-                }
-                aria-current={page === key && !detail ? "page" : undefined}
-              >
-                <Icon size={18} />
-                <span>{label}</span>
-                {key === "preparation" && (
-                  <span className="sc-nav-badge">8</span>
-                )}
-              </button>
-            ))}
-          </div>
-
-          <div className="sc-sidebar-bottom">
-            <button
-              type="button"
-              onClick={() => {
-                setDetail(null);
-                void go("settings");
-              }}
-              className={
-                "sc-nav-link " + (page === "settings" && !detail ? "active" : "")
-              }
-            >
-              <Settings size={18} />
-              <span>Settings</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setHelpOpen(true)}
-              className="sc-nav-link"
-            >
-              <CircleHelp size={18} />
-              <span>Help</span>
-            </button>
-            <CreatorCredit dark />
-          </div>
-        </aside>
-
-        <main className="sc-main-content">
-          {helpOpen && <ScHelpModal onClose={() => setHelpOpen(false)} />}
-          {ws.error instanceof ApiError && ws.error.code==="CONTEXT_CHANGED" && <div className="notice error"><span>Workspace changed. Your form values remain associated with the original context.</span><button className="btn secondary" onClick={async()=>{try{await preservePendingWork();setDialog(null);setDetail(null);await session.refetch();location.hash="settings";setPage("settings");}catch{setToast("Keep this page open: device storage could not preserve your work.");}}}>Preserve work & reopen session</button></div>}
           {ws.isPending ? (
             <div className="panel loading">
               <LoaderCircle className="spin" /> Loading server records…
@@ -1183,31 +1208,180 @@ function App() {
               <ErrorNotice error={ws.error} />
               <Button onClick={() => void ws.refetch()}>Retry</Button>
             </>
-          ) : detail ? (
-            <ScBoxDetailView
-              boxId={detail}
-              data={d}
-              onBack={() => setDetail(null)}
-              onMove={move}
-              open={open}
-              mutate={mutate}
-              can={can}
-              refresh={refresh}
-            />
           ) : (
             <>
               {page === "overview" && (
-                <ScTodayDashboard
-                  data={d}
-                  rows={rows}
-                  go={go}
-                  setDetail={setDetail}
-                  search={search}
-                  setSearch={setSearch}
-                />
+                <>
+                  <div className="stats-grid">
+                    {[
+                      [
+                        "boxes",
+                        "Physical boxes",
+                        Package,
+                        "View box register",
+                        "boxes",
+                      ],
+                      [
+                        "pallets",
+                        "Pallets",
+                        Layers,
+                        "View load units",
+                        "pallets",
+                      ],
+                      [
+                        "orders",
+                        "Open orders",
+                        ClipboardList,
+                        "Plan fulfilment",
+                        "orders",
+                      ],
+                      [
+                        "issues",
+                        "Need review",
+                        AlertTriangle,
+                        "Resolve outstanding work",
+                        "review",
+                      ],
+                    ].map(([key, label, Icon, caption, target]: any) => (
+                      <button
+                        className="stat-card"
+                        key={key}
+                        onClick={() => go(target)}
+                      >
+                        <div>
+                          <span>{label}</span>
+                          <Icon size={20} />
+                        </div>
+                        <strong>{d.counts?.[0]?.[key] ?? 0}</strong>
+                        <small>
+                          {caption}
+                          <ArrowUpRight size={14} />
+                        </small>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="overview-grid">
+                    <section className="preparation-banner">
+                      <div className="section-kicker">
+                        <CalendarDays size={19} /> DATED PREPARATION
+                      </div>
+                      <h2>
+                        {rows("preparations")[0]
+                          ? dateLabel(rows("preparations")[0].business_date,d.configuration)
+                          : "Plan the next preparation"}
+                      </h2>
+                      <p>One dated batch. Every order accounted for.</p>
+                      <div className="prep-summary">
+                        {[
+                          "selected",
+                          "picking",
+                          "packing",
+                          "checking",
+                          "ready",
+                        ].map((stage) => (
+                          <div key={stage}>
+                            <strong>
+                              {
+                                rows("preparationOrders").filter(
+                                  (po) =>
+                                    po.preparation_id ===
+                                      rows("preparations")[0]?.id &&
+                                    po.stage === stage,
+                                ).length
+                              }
+                            </strong>
+                            <small>{statuses[stage]}</small>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="banner-footer">
+                        <span>
+                          <Clock size={14} /> Delivery dates assigned separately
+                        </span>
+                        <button onClick={() => go("preparation")}>
+                          Open board <ArrowRight size={16} />
+                        </button>
+                      </div>
+                    </section>
+                    <section className="panel next-actions">
+                      <div className="section-head">
+                        <h2>Next actions</h2>
+                        <Badge value="neutral">Live work</Badge>
+                      </div>
+                      {[
+                        [
+                          ScanLine,
+                          "Receive incoming goods",
+                          "Create a physical box record",
+                          "receive",
+                        ],
+                        [
+                          AlertTriangle,
+                          "Review unconfirmed labels",
+                          rows("boxes").filter(
+                            (b) => b.status === "unconfirmed",
+                          ).length + " boxes need contents confirmation",
+                          "review",
+                        ],
+                        [
+                          Layers,
+                          "Check packed loads",
+                          "Verify the latest pallet manifest",
+                          "pallets",
+                        ],
+                      ].map(([Icon, t, desc, p]: any) => (
+                        <button
+                          className="next-action"
+                          key={p}
+                          onClick={() => go(p)}
+                        >
+                          <span>
+                            <Icon size={19} />
+                          </span>
+                          <div>
+                            <strong>{t}</strong>
+                            <small>{desc}</small>
+                          </div>
+                          <ChevronRight size={17} />
+                        </button>
+                      ))}
+                    </section>
+                  </div>
+                  <section className="panel">
+                    <div className="section-head">
+                      <div>
+                        <h2>Box register</h2>
+                        <p>Physical units and their effective location</p>
+                      </div>
+                      <button
+                        className="text-button"
+                        onClick={() => go("boxes")}
+                      >
+                        View all boxes <ArrowRight size={15} />
+                      </button>
+                    </div>
+                    <div className="search-row">
+                      <Search size={18} />
+                      <input
+                        aria-label="Find a box"
+                        placeholder="Find by box ID, customer, product or location…"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                      />
+                      <span>{rows("boxes").length} loaded</span>
+                    </div>
+                    <div className="table-labels">
+                      <span>BOX / CUSTOMER</span>
+                      <span>CONTENTS / VERIFIED QUANTITY</span>
+                      <span>LOCATION</span>
+                      <span>STATUS</span>
+                    </div>
+                    {boxTable(rows("boxes"), 6)}
+                  </section>
+                </>
               )}
               {page === "receive" && (
-                <ScReceiveScanView
+                <Receipt key={draftScope(user as any)}
                   data={d}
                   user={user}
                   onCreated={async (b) => {
@@ -1215,19 +1389,25 @@ function App() {
                     setDetail(b.id);
                     setToast("Box received · confirmed by server");
                   }}
-                  onSwitchToList={() => go("boxes")}
                 />
               )}
               {page === "boxes" && (
-                <ScInventoryView
-                  data={d}
-                  rows={rows}
-                  search={search}
-                  setSearch={setSearch}
-                  setDetail={setDetail}
-                  go={go}
-                  can={can}
-                />
+                <section className="panel">
+                  <div className="section-head">
+                    <h2>Physical box register</h2>
+                    <Badge>{d.counts?.[0]?.boxes || 0} boxes</Badge>
+                  </div>
+                  <div className="search-row">
+                    <Search size={18} />
+                    <input
+                      placeholder="Find box, product, customer or location…"
+                      aria-label="Search boxes"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                    />
+                  </div>
+                  {boxTable(rows("boxes"))}
+                </section>
               )}
               {page === "pallets" && (
                 <div className="stack">
@@ -2715,6 +2895,19 @@ function App() {
           user={user}
           close={() => setDialog(null)}
           onSaved={() => setToast("Saved · confirmed by server")}
+        />
+      )}{" "}
+      {detail && (
+        <BoxDetail
+          id={detail}
+          data={d}
+          can={can}
+          close={() => setDetail(null)}
+          onMove={move}
+          onReport={report}
+          onRefresh={refresh}
+          open={open}
+          mutate={mutate}
         />
       )}
     </div>

@@ -36,17 +36,3 @@ Orders, Preparation and Pallets now use searchable list/detail layouts based on 
 ## Creator attribution
 
 The supplied MM symbol and “Created by Mobeen” appear on the sidebar and sign-in screen; Synthetic Cure remains the product name. The separate signature image references another product and is not included. Source and demo typecheck/build passed; the desktop demo sidebar was visually inspected. Login and phone/tablet presentation have not been visually inspected in this slice; existing work and permissions were not changed.
-
-## Synthetic Cure 4-Quadrant Reference UI & Automation Guard Candidate
-
-Implemented the high-fidelity UI/UX from the 4-quadrant reference screenshot in `apps/web/src/ScreenshotViews.tsx` and integrated it cleanly into `apps/web/src/main.tsx` and `apps/web/src/style.css`:
-1. Topbar & Shell: Full-width dark teal header with faceted emerald/gold brand mark (`SyntheticCureLogo`), "Synthetic Cure" title, "DEMO DATA" badge, global search, notification dot, and profile switcher ("JD" / "Jamie Doe" / "Warehouse").
-2. Today Dashboard (Panel 1): Warehouse switcher, 4 primary KPI cards (Orders to prepare [12], Boxes to pick [86], Pallets to build [8], Needs review [2 in amber alert]), and "Work awaiting attention" tabbed data table with progress indicators and status pills.
-3. Receive & Scan (Panel 2): 3-column workflow with interactive viewfinder (scan label & photo capture file input), box details form with verified emerald badge, SKU combobox, and "Unconfirmed fields" card.
-4. Inventory & Locations (Panel 3): Boxes vs Locations tabs, search + 3-select filter bar, "+ Add box" & "Export" CTAs, and box inventory table matching screenshot records (`BX-730991827`, `BX-661204113`, etc.).
-5. Box Detail (Panel 4): Full-page detail view for `BX-730991827` featuring breadcrumb navigation, storage status badge, creation/update timestamps, Box Information card, Location & Pallet card with movement history audit trail, and Contents card.
-
-Fixed cross-platform Windows test anomaly in `tests/workflows.test.ts` where `/dev/null/private` was treated as a writable relative path. Terminated automated browser window launches permanently by abandoning external browser subagents.
-
-Verification: `npm run verify` passed (TypeScript check passed, 89 passed, 0 failed, 2 skipped, Vite client build passed).
-
