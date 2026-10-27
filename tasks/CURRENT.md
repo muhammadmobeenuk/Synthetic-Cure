@@ -1,4 +1,12 @@
-# Active slice · cancel outstanding expected inbound
+# Active slice · warehouse floor operations, smart inputs & cold-chain safety
+
+Acceptance: warehouse operators and delivery drivers experience modern, intelligent input fields with touch-friendly 48px hit areas. Replaces flat select dropdowns with searchable comboboxes supporting SKU, English, and Chinese names. Replaces raw numeric inputs with smart quantity steppers with unit affixes and quick-action increments. Scopes order destinations to selected customer branches and visualizes Available-to-Promise (ATP) unallocated stock. Implements FEFO (First-Expired, First-Out) picking and allocation priority. Validates cold-chain putaway environmental compatibility when moving or receiving chilled/frozen goods into ambient storage. Provides electronic Proof of Delivery (e-POD) canvas signature pad and delivery status tags for driver handover. Validates vehicle deck capacity (pallets and box totals) during delivery trip planning.
+
+Failure/recovery: preserve all domain invariants—optimistic locking, monotonic versions, server-derived actors, idempotent operation IDs, immutable audit history. Environmental compatibility warnings alert operators without blocking emergency operations. Stale versions return 409 and preserve form drafts. Incomplete signatures or missing quantities prevent submission before transaction.
+
+Verification: unit tests covering environmental compatibility and GS1 parsing (tests/smart-inputs.test.ts); regression suite (tests/api-response.test.ts, tests/csv.test.ts, tests/signout.test.ts); TypeScript check (tsc --noEmit); production bundle build (vite build).
+
+## Previous slice · cancel outstanding expected inbound
 
 Acceptance: supervisor/administrator can cancel the unreceived portion of an expected receipt with a reason and expected version; existing boxes, stock, held quantities and receipt history remain untouched. Show canceled quantity separately and zero outstanding to receive. Cancellation is an immutable business event and is safe to retry with the same operation ID. Receiving after cancellation must fail.
 

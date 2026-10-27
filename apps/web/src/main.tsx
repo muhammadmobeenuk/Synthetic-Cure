@@ -6,7 +6,7 @@ import {ProductImport} from "./ProductImport";
 import {Inbound} from "./Inbound";
 import {DraftRecovery} from "./DraftRecovery";
 import {ContextPicker,AccessControl} from "./AccessControl";
-import {SmartCombobox, SmartQuantityInput, useBarcodeScanner, playScanFeedback} from "./SmartInputs";
+import {SmartCombobox, SmartQuantityInput, useBarcodeScanner, playScanFeedback, SmartSignaturePad, checkEnvironmentalCompatibility, EnvironmentalWarningBadge} from "./SmartInputs";
 import {draftScope,legacyDraftScopes} from "./draft-scope";
 import {registerPendingCapture,preservePendingWork,signOutSafely} from "./work-preservation";
 import { CompanySetup } from "./CompanySetup";
@@ -83,7 +83,7 @@ type Field = {
   key: string;
   label: string;
   type?: string;
-  options?: { value: string; label: string }[];
+  options?: { value: string; label: string; sublabel?: string; badge?: string }[];
   required?: boolean;
   hint?: string;
   value?: any;
@@ -98,6 +98,7 @@ type DialogSpec = {
   submit: (v: Row, op: string) => Promise<any>;
   after?: (r: any) => void;
   draftKey?: string;
+  renderExtra?: (values: Row) => ReactNode;
 };
 const nav = [
   ["overview", "Overview", LayoutDashboard],
@@ -408,6 +409,17 @@ function App() {
   }
   const open = (spec: DialogSpec) => setDialog(spec);
   function move(box: Row, isPallet = false) {
+    const boxContents = isPallet
+      ? rows("contents").filter((c) =>
+          rows("boxes")
+            .filter((b) => b.pallet_id === box.id)
+            .some((b) => b.id === c.box_id)
+        )
+      : rows("contents").filter((c) => c.box_id === box.id);
+    const productsToMove = boxContents
+      .map((c) => rows("products").find((p) => p.id === c.product_id))
+      .filter(Boolean);
+
     open({
       title: "Confirm physical movement",
       contextId: box.id,
@@ -426,6 +438,15 @@ function App() {
         },
         { key: "reason", label: "Movement reason", required: true },
       ],
+      renderExtra: (v) => {
+        if (!v.locationId || !productsToMove.length) return null;
+        const targetLoc = rows("locations").find((l) => l.id === v.locationId);
+        const check = checkEnvironmentalCompatibility(productsToMove, targetLoc);
+        if (!check.isCompatible) {
+          return <EnvironmentalWarningBadge warning={check.warning!} />;
+        }
+        return null;
+      },
       submit: (v, op) =>
         mutate(
           "/" + (isPallet ? "pallets" : "boxes") + "/" + box.id + "/move",
@@ -943,12 +964,65 @@ function App() {
           label: "Ready shipments",
           type: "multiselect",
           required: true,
-          options: ships.map((s) => ({
-            value: s.id,
-            label: s.order_code + " · " + s.destination_name,
-          })),
+          options: ships.map((s) => {
+            const shipLines = rows("shipmentLines").filter((l) => l.shipment_id === s.id);
+            const shipBoxes = rows("boxes").filter((b) => shipLines.some((l) => l.box_id === b.id));
+            const palletCount = new Set(shipBoxes.map((b) => b.pallet_id).filter(Boolean)).size;
+            return {
+              value: s.id,
+              label: `${s.order_code} · ${s.destination_name} (${shipBoxes.length} boxes${palletCount ? ` · ${palletCount} plts` : ""})`,
+            };
+          }),
         },
       ],
+      renderExtra: (v) => {
+        const selectedShipmentIds: string[] = v.shipmentIds || [];
+        if (!selectedShipmentIds.length) return null;
+        const selectedLines = rows("shipmentLines").filter((l) =>
+          selectedShipmentIds.includes(l.shipment_id)
+        );
+        const selectedBoxes = rows("boxes").filter((b) =>
+          selectedLines.some((l) => l.box_id === b.id)
+        );
+        const palletCount = new Set(selectedBoxes.map((b) => b.pallet_id).filter(Boolean)).size;
+        const isOverCapacity = palletCount > 6;
+
+        return (
+          <div className={`smart-trip-deck-card ${isOverCapacity ? "alert" : ""}`}>
+            <div className="smart-trip-deck-header">
+              <span className="smart-trip-deck-title">
+                <Truck size={16} /> Vehicle Deck & Payload Manifest
+              </span>
+              <span className="badge">{selectedShipmentIds.length} stops</span>
+            </div>
+            <div className="smart-trip-metrics-grid">
+              <div className="smart-trip-metric-item">
+                <div className="smart-trip-metric-num">{selectedShipmentIds.length}</div>
+                <div className="smart-trip-metric-lbl">Shipments</div>
+              </div>
+              <div className="smart-trip-metric-item">
+                <div className="smart-trip-metric-num">{selectedBoxes.length}</div>
+                <div className="smart-trip-metric-lbl">Boxes</div>
+              </div>
+              <div className="smart-trip-metric-item">
+                <div className={`smart-trip-metric-num ${isOverCapacity ? "alert" : ""}`}>
+                  {palletCount}
+                </div>
+                <div className="smart-trip-metric-lbl">Pallets</div>
+              </div>
+            </div>
+            {isOverCapacity ? (
+              <p className="smart-trip-warning-note">
+                ⚠️ Exceeds standard single-van deck footprint (max 6 pallets). Assign a large freight vehicle or divide into multiple trips.
+              </p>
+            ) : (
+              <p className="smart-trip-ok-note">
+                ✓ Manifest footprint within standard delivery vehicle limits (≤ 6 pallets).
+              </p>
+            )}
+          </div>
+        );
+      },
       submit: (v, op) =>
         mutate(
           "/trips",
@@ -985,9 +1059,10 @@ function App() {
         ...fields,
         {
           key: "note",
-          label: "Recipient / handover evidence / exception note",
+          label: "Recipient proof of delivery (e-POD) & exception note",
           required: true,
-          type: "textarea",
+          type: "signature",
+          hint: "Collect recipient digital signature or record delivery exception reasons.",
         },
       ],
       draftKey: "handover-" + s.id,
@@ -3349,6 +3424,15 @@ function TaskDialog({
                   </p>
                 )}
               </fieldset>
+            ) : f.type === "signature" ? (
+              <SmartSignaturePad
+                key={f.key}
+                label={f.label}
+                required={f.required}
+                value={values[f.key] || ""}
+                hint={f.hint}
+                onChange={(v) => setValues({ ...values, [f.key]: v })}
+              />
             ) : f.options ? (
               <SmartCombobox
                 key={f.key}
@@ -3395,6 +3479,7 @@ function TaskDialog({
             ),
           )}
         </div>
+        {spec.renderExtra && spec.renderExtra(values)}
         {spec.draftKey && (
           <div className="draft-tools">
             <button
@@ -3470,6 +3555,21 @@ function Receipt({
   const products: Row[] = data.products || [],
     locations: Row[] = data.locations || [],
     customers: Row[] = data.customers || [];
+  const customerOptions = customers.map((c) => ({
+    value: c.id,
+    label: c.code + " · " + c.name,
+  }));
+  const locationOptions = locations.map((l) => ({
+    value: l.id,
+    label: l.code + " · " + l.name,
+    badge: l.kind,
+  }));
+  const productOptions = products.map((p) => ({
+    value: p.id,
+    label: p.sku + " · " + p.name,
+    sublabel: p.name_zh ? `${p.name_zh} · Unit: ${p.unit}` : `Unit: ${p.unit}`,
+    badge: p.profile,
+  }));
   const fresh = () => ({
     clientOperationId: newOperation(),
     customerId: "",
@@ -3526,6 +3626,13 @@ function Receipt({
     fd.set("clientOperationId", v.clientOperationId);
     await api("/boxes/" + box.id + "/photo", fd);
   }
+
+  const selectedLocation = locations.find((l) => l.id === v.locationId);
+  const receiptLineProducts = v.lines
+    .map((l: any) => products.find((p) => p.id === l.productId))
+    .filter(Boolean);
+  const receiptEnvCheck = checkEnvironmentalCompatibility(receiptLineProducts, selectedLocation);
+
   return (
     <div className="receive-layout">
       <section className="panel receive-form">
@@ -3583,6 +3690,7 @@ function Receipt({
               setFile(null);
               setReceived(null);
               setDraft("Synced · server confirmed");
+              playScanFeedback(true);
               await onCreated(b!);
             } catch (err) {
               setError(err);
@@ -3602,26 +3710,25 @@ function Receipt({
           }}
         >
           <div className="form-grid">
-            <Select
+            <SmartCombobox
               label="Ordering customer · if known"
+              placeholder="Search or select customer…"
               value={v.customerId}
               onChange={(x) => setV({ ...v, customerId: x })}
-              options={customers.map((c) => ({
-                value: c.id,
-                label: c.code + " · " + c.name,
-              }))}
+              options={customerOptions}
             />
-            <Select
+            <SmartCombobox
               label="Confirmed physical location"
+              placeholder="Search bay / rack location…"
               value={v.locationId}
               onChange={(x) => setV({ ...v, locationId: x })}
               required
-              options={locations.map((l) => ({
-                value: l.id,
-                label: l.code + " · " + l.name,
-              }))}
+              options={locationOptions}
             />
           </div>
+          {!receiptEnvCheck.isCompatible && v.locationId && (
+            <EnvironmentalWarningBadge warning={receiptEnvCheck.warning!} />
+          )}
           <label className="field">
             <span>Printed label / reference · original source text</span>
             <textarea
@@ -3664,14 +3771,12 @@ function Receipt({
               {" "}
               {v.lines.map((l: any, index: number) => (
                 <div className="contents-input" key={index}>
-                  <Select
+                  <SmartCombobox
                     label={"Product · line " + (index + 1)}
+                    placeholder="Search SKU or product name…"
                     value={l.productId}
                     required
-                    options={products.map((p) => ({
-                      value: p.id,
-                      label: p.sku + " · " + p.name,
-                    }))}
+                    options={productOptions}
                     onChange={(x) =>
                       setV({
                         ...v,
@@ -3726,41 +3831,28 @@ function Receipt({
                       requirements are configured in Products.
                     </small>
                   </label>
-                  <div className="quantity-input">
-                    <label className="field">
-                      <span>
-                        Quantity{" "}
-                        {products.find((p) => p.id === l.productId)?.unit
-                          ? "(" +
-                            products.find((p) => p.id === l.productId)?.unit +
-                            ")"
-                          : ""}
-                      </span>
-                      <input
-                        type="number"
-                        min="0.000001"
-                        step="0.000001"
-                        value={l.quantity}
-                        placeholder="Unknown"
-                        onChange={(e) =>
-                          setV({
-                            ...v,
-                            lines: v.lines.map((old: any, i: number) =>
-                              i === index
-                                ? {
-                                    ...old,
-                                    quantity: e.target.value,
-                                    verified: e.target.value
-                                      ? old.verified
-                                      : false,
-                                  }
-                                : old,
-                            ),
-                          })
-                        }
-                      />
-                    </label>
-                    <label className="checkbox-field">
+                  <div className="quantity-input" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    <SmartQuantityInput
+                      label="Quantity"
+                      unit={products.find((p) => p.id === l.productId)?.unit}
+                      value={l.quantity || ""}
+                      placeholder="0.00"
+                      onChange={(val) =>
+                        setV({
+                          ...v,
+                          lines: v.lines.map((old: any, i: number) =>
+                            i === index
+                              ? {
+                                  ...old,
+                                  quantity: val,
+                                  verified: val ? old.verified : false,
+                                }
+                              : old,
+                          ),
+                        })
+                      }
+                    />
+                    <label className="checkbox-field" style={{ alignSelf: "flex-start", marginTop: "4px" }}>
                       <input
                         type="checkbox"
                         disabled={!l.quantity}

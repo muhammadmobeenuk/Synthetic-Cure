@@ -1,4 +1,12 @@
-# Current candidate · PLATFORM-003
+# Current candidate · WMS-MODERN-001
+
+Modernizes warehouse floor input ergonomics and strengthens operational safety logic. Integrates high-speed fuzzy searchable comboboxes, quantity steppers with unit affixes and quick-fill triggers, hardware barcode scanner listener (useBarcodeScanner) with GS1-128 AI parser (01, 10, 17, 21), and tactile/auditory Web Audio and haptic feedback (playScanFeedback). Enforces FEFO (First-Expired, First-Out) picking and allocation order. Adds real-time Available-to-Promise (ATP) stock badges to order entry. Scopes destination selection to customer branches. Enforces cold-chain putaway environmental checks across receiving and internal movements. Adds touch-first digital signature pad (SmartSignaturePad) with delivery disposition tags to driver handover e-POD. Adds trip payload deck metrics and pallet capacity validation during trip planning.
+
+Verification: PASSED: tsc --noEmit (strict TypeScript, zero errors); npm run build (Vite client bundle compiled in 520ms); unit test suite (tests/smart-inputs.test.ts, 4/4 passed); core regression tests (tests/api-response.test.ts, tests/csv.test.ts, tests/signout.test.ts, 12/12 passed).
+
+Limits: Native PostgreSQL concurrency/migration/restore still blocked without two disposable URLs. Physical warehouse handheld terminals and Bluetooth ring scanner devices remain unverified. Automatic offline sync and live OCR remain unchanged. Production readiness is not claimed.
+
+## Previous candidate · PLATFORM-003
 
 Preserves PLATFORM-002 source 7e9ace7 and existing working warehouse operations. Adds create-only company product CSV import scoped to the reviewing warehouse. Private originals, mapping, source hash/policy and product links persist. Strict units/profiles, bilingual names/leading zeros retained; previews add no stock/products; revalidation and atomic commit prevent partial imports and duplicates. Administrator-only initial permission. Settings/onboarding claims updated.
 

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useId } from "react";
 import Decimal from "decimal.js";
-import { Search, ChevronDown, Check, X, Plus, Minus, ScanLine, Sparkles } from "lucide-react";
+import { Search, ChevronDown, Check, X, Plus, Minus, ScanLine, Sparkles, AlertCircle, RotateCcw, PenTool } from "lucide-react";
 
 export interface ComboboxOption {
   value: string;
@@ -501,3 +501,293 @@ export function playScanFeedback(success: boolean = true) {
     // Graceful fallback if audio is blocked by user gesture policy
   }
 }
+
+export interface EnvironmentalCompatibilityResult {
+  isCompatible: boolean;
+  warning?: string;
+  requiredProfile?: string;
+  locationKind?: string;
+}
+
+/**
+ * Checks whether items requiring temperature control are placed in an appropriate location.
+ */
+export function checkEnvironmentalCompatibility(
+  products: (
+    | {
+        name?: string;
+        sku?: string;
+        profile?: string;
+        require_temperature?: boolean;
+        temperature_min?: string | number | null;
+        temperature_max?: string | number | null;
+        [key: string]: any;
+      }
+    | undefined
+    | null
+  )[],
+  location: { code?: string; name?: string; kind?: string; restrictions?: string | null; [key: string]: any } | undefined | null
+): EnvironmentalCompatibilityResult {
+  if (!location) return { isCompatible: true };
+
+  // Check if any product has cold-chain requirements
+  const coldProduct = products.find(
+    (p) =>
+      p &&
+      (p.profile === "Chilled" ||
+        p.profile === "Frozen" ||
+        p.require_temperature === true ||
+        (p.temperature_min != null && Number(p.temperature_min) < 15))
+  );
+
+  if (!coldProduct) return { isCompatible: true };
+
+  // Check if location is cold-chain equipped
+  const locDesc = `${location.code || ""} ${location.name || ""} ${location.kind || ""} ${location.restrictions || ""}`.toLowerCase();
+  const hasColdCapability = /cold|chill|freez|fridge|cool|temp|refrig|climate|hvac|walk-in/i.test(locDesc);
+
+  if (!hasColdCapability) {
+    const tempRange =
+      coldProduct.temperature_min != null && coldProduct.temperature_max != null
+        ? ` (${coldProduct.temperature_min}°C to ${coldProduct.temperature_max}°C)`
+        : "";
+    return {
+      isCompatible: false,
+      requiredProfile: coldProduct.profile || "Temperature-controlled",
+      locationKind: location.kind || "ambient",
+      warning: `Cold Chain Alert: Product "${coldProduct.name || coldProduct.sku}" requires ${
+        coldProduct.profile || "temperature control"
+      }${tempRange}, but selected location "${location.code} · ${location.name}" is an ambient/unrefrigerated area (${
+        location.kind || "ambient"
+      }). Verify climate integrity before putaway.`,
+    };
+  }
+
+  return { isCompatible: true };
+}
+
+export function EnvironmentalWarningBadge({ warning }: { warning: string }) {
+  return (
+    <div className="smart-env-warning" role="alert">
+      <AlertCircle size={18} className="smart-env-icon" />
+      <div className="smart-env-content">
+        <strong>Cold Chain Notice</strong>
+        <p>{warning}</p>
+      </div>
+    </div>
+  );
+}
+
+export interface SmartSignaturePadProps {
+  value: string;
+  onChange: (value: string) => void;
+  required?: boolean;
+  disabled?: boolean;
+  hint?: string;
+  label?: string;
+}
+
+/**
+ * Mobile-first HTML5 Canvas digital signature pad with recipient printed name,
+ * quick delivery disposition tags, and automatic note formatting.
+ */
+export function SmartSignaturePad({
+  value,
+  onChange,
+  required = false,
+  disabled = false,
+  hint,
+  label = "Recipient Proof of Delivery (e-POD)",
+}: SmartSignaturePadProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [hasDrawn, setHasDrawn] = useState(false);
+  const [recipientName, setRecipientName] = useState("");
+  const [status, setStatus] = useState("Delivered in Full");
+  const [extraNote, setExtraNote] = useState("");
+
+  // Synchronize composite note string back to parent form
+  useEffect(() => {
+    if (!recipientName && !extraNote && !hasDrawn && value) {
+      return;
+    }
+    const parts: string[] = [];
+    if (recipientName.trim()) {
+      parts.push(`Delivered to & signed by: ${recipientName.trim()}`);
+    } else {
+      parts.push(`Handover recorded`);
+    }
+    if (hasDrawn) {
+      parts.push(`[Digital Touch Signature Verified]`);
+    }
+    if (status) {
+      parts.push(`Status: ${status}`);
+    }
+    if (extraNote.trim()) {
+      parts.push(`Note: ${extraNote.trim()}`);
+    }
+    const combined = parts.join(" · ");
+    if (combined && combined !== value) {
+      onChange(combined);
+    }
+  }, [recipientName, hasDrawn, status, extraNote]);
+
+  // Set up canvas context
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const ratio = Math.max(window.devicePixelRatio || 1, 1);
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * ratio;
+    canvas.height = rect.height * ratio;
+    ctx.scale(ratio, ratio);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "#087a55"; // Jade theme color
+    ctx.lineWidth = 2.5;
+  }, []);
+
+  function startDrawing(e: React.PointerEvent<HTMLCanvasElement>) {
+    if (disabled) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const rect = canvas.getBoundingClientRect();
+    ctx.beginPath();
+    ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+    setIsDrawing(true);
+    setHasDrawn(true);
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }
+
+  function draw(e: React.PointerEvent<HTMLCanvasElement>) {
+    if (!isDrawing || disabled) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const rect = canvas.getBoundingClientRect();
+    ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+    ctx.stroke();
+  }
+
+  function stopDrawing(e: React.PointerEvent<HTMLCanvasElement>) {
+    if (!isDrawing) return;
+    setIsDrawing(false);
+    try {
+      (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {}
+  }
+
+  function clearSignature() {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setHasDrawn(false);
+  }
+
+  return (
+    <div className="smart-signature-container">
+      <label className="smart-field-label">
+        <span>{label}</span>
+        {required && <span className="smart-required-badge">*</span>}
+      </label>
+
+      {/* Recipient Printed Name */}
+      <div className="smart-sig-name-box">
+        <label className="smart-sig-sublabel">Recipient Name & Designation</label>
+        <input
+          type="text"
+          placeholder="e.g. Dr. Jane Smith · Pharmacy Receiving Lead"
+          value={recipientName}
+          disabled={disabled}
+          onChange={(e) => setRecipientName(e.target.value)}
+          className="smart-sig-name-input"
+        />
+      </div>
+
+      {/* Signature Canvas Box */}
+      <div className="smart-sig-canvas-wrapper">
+        <div className="smart-sig-canvas-header">
+          <span className="smart-sig-canvas-prompt">
+            <PenTool size={13} /> Sign on screen below (Touch / Stylus):
+          </span>
+          <button
+            type="button"
+            className="smart-sig-clear-btn"
+            onClick={clearSignature}
+            disabled={disabled || !hasDrawn}
+            title="Clear and re-sign"
+          >
+            <RotateCcw size={12} /> Clear
+          </button>
+        </div>
+        <div className="smart-sig-canvas-board">
+          <canvas
+            ref={canvasRef}
+            className="smart-sig-canvas"
+            onPointerDown={startDrawing}
+            onPointerMove={draw}
+            onPointerUp={stopDrawing}
+            onPointerCancel={stopDrawing}
+          />
+          {!hasDrawn && (
+            <div className="smart-sig-watermark" aria-hidden="true">
+              <span>✍️ Sign here</span>
+              <div className="smart-sig-line" />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Delivery Outcome / Quick Exception Tags */}
+      <div className="smart-sig-outcomes">
+        <span className="smart-sig-sublabel">Delivery Status:</span>
+        <div className="smart-sig-outcome-pills">
+          {[
+            "Delivered in Full",
+            "Partial (Damaged)",
+            "Partial (Shortage)",
+            "Customer Refusal",
+            "Dock / Reception Handover",
+          ].map((tag) => (
+            <button
+              key={tag}
+              type="button"
+              className={`smart-outcome-pill ${status === tag ? "active" : ""}`}
+              onClick={() => setStatus(tag)}
+              disabled={disabled}
+            >
+              {tag}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Exception or Operational Notes */}
+      <div className="smart-sig-notes-box">
+        <label className="smart-sig-sublabel">Handover Note / Exception Detail</label>
+        <textarea
+          rows={2}
+          placeholder="Specific handover instructions, dock temperature reading, or exception details…"
+          value={extraNote}
+          disabled={disabled}
+          onChange={(e) => setExtraNote(e.target.value)}
+          className="smart-sig-textarea"
+          maxLength={500}
+        />
+      </div>
+
+      {hint && <small className="smart-field-hint">{hint}</small>}
+    </div>
+  );
+}
+

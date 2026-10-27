@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api, ApiError, newOperation, saveDraft, getDraft, deleteDraft } from "./api";
 import { draftScope, type Identity } from "./draft-scope";
 import { registerPendingCapture } from "./work-preservation";
-import { SmartCombobox, SmartQuantityInput } from "./SmartInputs";
+import { SmartCombobox, SmartQuantityInput, checkEnvironmentalCompatibility, EnvironmentalWarningBadge } from "./SmartInputs";
 import { Sparkles, PackageCheck, AlertCircle } from "lucide-react";
 
 type Row = Record<string, any>;
@@ -187,6 +187,15 @@ export function Inbound({
     label: `${l.code} · ${l.name}`,
     badge: l.kind,
   }));
+
+  const selectedReceiptProduct = selected
+    ? products.find((p) => p.id === selected.product_id) || selected
+    : null;
+  const chosenReceiptLocation = locations.find((l) => l.id === location);
+  const receiptEnvCheck = checkEnvironmentalCompatibility(
+    selectedReceiptProduct ? [selectedReceiptProduct] : [],
+    chosenReceiptLocation
+  );
 
   return (
     <section className="panel entity-card product-import" aria-label="Expected inbound">
@@ -542,6 +551,10 @@ export function Inbound({
                   hint="Remembered for subsequent box receipts in this batch."
                   onChange={(val) => setLocation(val)}
                 />
+
+                {!receiptEnvCheck.isCompatible && location && (
+                  <EnvironmentalWarningBadge warning={receiptEnvCheck.warning!} />
+                )}
 
                 <label className="field">
                   <span>Source label / barcode (optional)</span>

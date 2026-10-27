@@ -3063,3 +3063,226 @@ button:focus-visible, a:focus-visible { outline-color: #bc8100; }
   cursor: not-allowed;
 }
 
+/* Cold Chain Environmental Compatibility Warning */
+.smart-env-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: #fffbeb;
+  border: 1px solid #f59e0b;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin: 10px 0;
+  color: #92400e;
+}
+.smart-env-icon {
+  color: #d97706;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.smart-env-content strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+.smart-env-content p {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #78350f;
+  margin: 0;
+}
+
+/* Digital Touch Signature & e-POD Pad */
+.smart-signature-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #fafcfb;
+  border: 1px solid #d4e6db;
+  border-radius: 8px;
+  padding: 14px;
+  margin-top: 6px;
+}
+.smart-sig-sublabel {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #3b5266;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 4px;
+}
+.smart-sig-name-input {
+  min-height: 44px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.smart-sig-canvas-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.smart-sig-canvas-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.smart-sig-canvas-prompt {
+  font-size: 12px;
+  font-weight: 600;
+  color: #14283b;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.smart-sig-clear-btn {
+  font-size: 11px;
+  font-weight: 650;
+  color: #8b1818;
+  padding: 3px 8px;
+  background: #fdf2f2;
+  border: 1px solid #fed7d7;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.smart-sig-clear-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.smart-sig-canvas-board {
+  position: relative;
+  width: 100%;
+  height: 125px;
+  background: #ffffff;
+  border: 1.5px dashed #087a55;
+  border-radius: 6px;
+  overflow: hidden;
+  touch-action: none;
+}
+.smart-sig-canvas {
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+  display: block;
+}
+.smart-sig-watermark {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 12px 16px;
+  color: #9cb2c1;
+  font-size: 13px;
+  font-weight: 600;
+}
+.smart-sig-line {
+  width: 100%;
+  height: 1px;
+  background: #ccd8df;
+  margin-top: 4px;
+}
+.smart-sig-outcome-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.smart-outcome-pill {
+  min-height: 38px;
+  padding: 0 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #f0f4f7;
+  border: 1px solid #d4dee5;
+  color: #14283b;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.smart-outcome-pill.active {
+  background: #087a55;
+  border-color: #087a55;
+  color: #ffffff;
+  box-shadow: 0 1px 3px rgba(8, 122, 85, 0.25);
+}
+.smart-sig-textarea {
+  min-height: 60px;
+  font-size: 13px;
+}
+
+/* Trip Planning Capacity Card */
+.smart-trip-deck-card {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin: 12px 0;
+}
+.smart-trip-deck-card.alert {
+  background: #fffbeb;
+  border-color: #f59e0b;
+}
+.smart-trip-deck-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.smart-trip-deck-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.smart-trip-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.smart-trip-metric-item {
+  background: #ffffff;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  text-align: center;
+}
+.smart-trip-metric-num {
+  font-size: 18px;
+  font-weight: 750;
+  color: #087a55;
+  line-height: 1.1;
+}
+.smart-trip-deck-card.alert .smart-trip-metric-num.alert {
+  color: #b45309;
+}
+.smart-trip-metric-lbl {
+  font-size: 10px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+.smart-trip-warning-note {
+  font-size: 12px;
+  font-weight: 550;
+  color: #92400e;
+  line-height: 1.4;
+  margin: 0;
+}
+.smart-trip-ok-note {
+  font-size: 12px;
+  font-weight: 550;
+  color: #065f46;
+  line-height: 1.4;
+  margin: 0;
+}
+
+
