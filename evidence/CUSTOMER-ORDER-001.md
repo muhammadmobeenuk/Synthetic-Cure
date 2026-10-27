@@ -1,0 +1,9 @@
+# Customer order form candidate
+
+Base bb8203d. Implemented a multi-product internal order form over the existing authenticated API. Product and quantity units are explicit. Ordering customer and recipient stay distinct; no prices or pack conversions inferred. Duplicate product lines rejected at the API boundary for new orders. Device drafts are scoped; uncertain network responses retain the same operation and payload for retry. Accepted order persists with audit history.
+
+PASSED npm run verify: 85 tests, 84 passed, zero failed, one native-only skipped; TypeScript and Vite build passed. Raw order-form-verification.txt. New HTTP test covers two units/products, idempotent replay, duplicate products, transaction rollback on invalid unit, and unauthorized customer/destination relationship.
+
+PASSED browser against full Express/PGlite: selected Example East Market and its receiving desk, entered 2 piece and 1.5 kg, submitted ORD-D337350B with server-confirmed status; both lines remained after reload. Synthetic data only. Phone/tablet, offline recovery and printed order form NOT RUN. Native PostgreSQL BLOCKED without disposable databases. Existing historical duplicate-product orders may still show ambiguous shipped totals; this change prevents new duplicates but does not repair history.
+
+NOT IMPLEMENTED: grouping several pallets as a logical load with driver/trip, customer-facing printable order sheet, verified prices/approvals, automatic offline sync, camera/OCR. Existing independent pallets, mixed-customer pallet manifests, trips/stops, shipment loading and dispatch remain; grouping is not represented as physical stacking. Next bounded task is persisted logical pallet group with company/warehouse-scoped links, concurrency guards, audit, safe membership changes and revalidation against current trip/manifests.

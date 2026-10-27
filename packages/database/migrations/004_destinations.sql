@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS destination_authorizations(id text PRIMARY KEY,org_id text NOT NULL REFERENCES organizations(id),customer_id text NOT NULL REFERENCES customers(id),destination_id text NOT NULL REFERENCES destinations(id),reason text NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),UNIQUE(customer_id,destination_id));

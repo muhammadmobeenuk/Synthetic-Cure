@@ -1,0 +1,184 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> jadesun-warehouse@0.1.0 verify
+> npm run typecheck && npm test && npm run build
+
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> jadesun-warehouse@0.1.0 typecheck
+> tsc --noEmit
+
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> jadesun-warehouse@0.1.0 test
+> node --import tsx --test tests/*.test.ts
+
+✔ CSV preserves bilingual text, zero codes, quotes, commas, multiline and BOM/CRLF (2.007554ms)
+✔ CSV rejects malformed/oversize/invalid encoding and ambiguous missing header/rows (2.181594ms)
+✔ CSV mapping rejects repeated/out-of-range columns, invalid units/profiles and duplicate SKUs (14.95065ms)
+✔ CSV reports neutralize formula injection including leading whitespace and escaped quotes (0.71187ms)
+✔ decimal totals retain unknown counts and do not turn unknown into zero (2931.997688ms)
+✔ Europe/London business date across both daylight-saving transitions (14.761928ms)
+✔ duplicate receipt and canonical replay create one stable physical identity (26.322601ms)
+✔ changed payload cannot reuse an idempotency key (3.82304ms)
+✔ unknown pack size remains unknown and cannot allocate stock (6.685811ms)
+✔ two concurrent moves: one wins; stale command returns current version (10.879886ms)
+✔ offline replay movement is idempotent (15.611951ms)
+✔ moving a pallet changes effective locations; removing one preserves others (60.611797ms)
+✔ one box cannot belong to two pallets and nesting is unsupported (5.947142ms)
+✔ concurrent allocation of last box succeeds once (21.398745ms)
+✔ order cancellation releases allocations with retained event (9.932093ms)
+✔ repacking conserves exact quantity and creates a different box identity (28.412361ms)
+✔ dated preparation selects existing orders only and never repeats them (6.882871ms)
+✔ Wednesday workflow reaches ready without dispatch; physical staging required (109.818002ms)
+✔ unrelated box rejected; duplicate load does not change physical box count (19.112354ms)
+✔ driver assignment history and separate custody dispatch (32.835073ms)
+✔ partial delivery keeps outstanding; returns stay held (36.38885ms)
+✔ checked pallet membership changes invalidate verification (15.391422ms)
+✔ immutable audit events reject silent overwrites (1.848052ms)
+✔ foreign organization references and role elevation rejected (1.199761ms)
+✔ failed receipt transaction leaves no partial box or event (6.142353ms)
+✔ database-backed export reaches completed authoritative result (11.591324ms)
+✔ backup and restore recover domain data plus private file hash (2335.68722ms)
+{"requestId":"392b87a8-e730-4686-bafd-9c0a3c8b31a6","status":401,"code":"UNAUTHENTICATED"}
+{"requestId":"01787506-a437-4dce-b1d3-c71c11d461b5","status":403,"code":"CSRF"}
+{"requestId":"9b9d834a-9006-4da2-8534-0a28a9f8d74e","status":403,"code":"FORBIDDEN"}
+{"requestId":"6daf4010-780b-4c8b-b94c-e13b5d74ae9d","status":404,"code":"NOT_FOUND"}
+{"requestId":"3934257f-aae8-4ab6-a7e4-22ef3faaacda","status":404,"code":"NOT_FOUND"}
+✔ HTTP sessions, CSRF, authorization, private documents and foreign IDs (142.016261ms)
+{"requestId":"1ba7905f-b7e7-4fdf-a344-b65949b20022","status":403,"code":"FORBIDDEN"}
+✔ HTTP driver list returns assigned trip only and denies source documents (40.517211ms)
+✔ actual HTTP driver reassignment preserves before/after audit history (64.012971ms)
+✔ mixed-customer pallet manifests load onto one permitted trip (304.377349ms)
+✔ HTTP count submission persists unique observations and review without stock adjustment (55.821816ms)
+{"requestId":"c99e4cf2-21c4-4fa6-8b61-f7546309179c","status":403,"code":"FORBIDDEN"}
+✔ HTTP return disposition needs supervisor permission and releases only returned quantity (83.719103ms)
+{"requestId":"bb1882bc-c783-46f3-bdf2-a04b1c0569c3","status":422,"code":"UPLOAD_SIGNATURE"}
+{"requestId":"698342cb-a1c0-4dc3-911e-79cfc1451e15","status":401,"code":"UNAUTHENTICATED"}
+{"requestId":"83093e17-5985-44ae-9cb4-e8017277db82","status":403,"code":"FORBIDDEN"}
+{"requestId":"620b5fbb-6208-4c52-8d39-05125729eacd","status":413,"code":"LIMIT_FILE_SIZE"}
+{"requestId":"dbe4b92f-cf63-439a-ba25-5d5d1908f62f","status":500,"code":"ENOTDIR"}
+{"requestId":"7b751c73-f0c2-42c3-9433-4756d42b9b0b","status":404,"code":"NOT_FOUND"}
+✔ photo upload validates signatures, retries once, stays private, and survives upload failure (173.625987ms)
+✔ checked order amendment forces reconciliation and blocks stale loading (130.663893ms)
+✔ preparation add/remove and carry preserve audit without repeating orders (79.965451ms)
+✔ authorized partial dispatch creates an outstanding unassigned shipment (146.41557ms)
+✔ cross-customer destination requires an explicit authorization (65.25512ms)
+✔ operational text and status combinations meet WCAG normal-text contrast (0.931816ms)
+✔ audit: repeated physical load with a different operation ID is a visible no-op (108.01775ms)
+✔ audit: reporting an issue after checking invalidates readiness and loaded marks (157.521047ms)
+✔ audit: dispatch rechecks open issues even if checking metadata was unchanged (113.251762ms)
+✔ audit: unverified address blocks ordinary dispatch; supervisor exception requires reason and audit (166.555687ms)
+{"requestId":"c6d914b3-ed4c-4f08-9f13-85785376844d","status":403,"code":"FORBIDDEN"}
+✔ audit: reassigned driver cannot receive stale-version state or replay an old handover (171.629653ms)
+✔ audit: repeated loose picks conserve quantity and reuse one picking container (118.471748ms)
+✔ audit: fully picking a source records known empty rather than unknown stock (63.998043ms)
+{"requestId":"7c744f46-e1dc-4beb-9e84-c5786a751ccb","status":403,"code":"FORBIDDEN"}
+✔ audit: configured food tracking keeps missing data unconfirmed and validates measured values (116.345446ms)
+✔ audit: verified quantity correction requires authority, reason and previous-value evidence (31.890651ms)
+✔ audit: trip stop sequence follows explicit shipment selection order (185.860819ms)
+{"requestId":"8b158013-55da-497e-b0e0-d370c510e6ef","status":403,"code":"FORBIDDEN"}
+✔ audit: verified destination address requires authorized evidence and retains version/history (52.174538ms)
+✔ audit: a physical box can be received before any product is identified (51.281902ms)
+✔ platform: database constraints reject cross-company links including preparation and jobs (10.831392ms)
+{"requestId":"69df5664-118e-46a7-b0fc-84e0356276e3","status":403,"code":"FORBIDDEN"}
+✔ platform: export download and workspace results require export permission (112.744822ms)
+✔ platform: worker rejects revoked actors and unsupported job kinds (23.920893ms)
+✔ platform: occupied restore does not overwrite files, and corrupted evidence restores no records (6106.918645ms)
+✔ platform: incomplete backup is rejected instead of silently dropping records (1910.915964ms)
+﹣ platform: native race participants use two independent backend connections (0.234566ms) # SKIP
+✔ platform: SQL migrations preserve quoted semicolons and comments (0.806337ms)
+{"requestId":"e6d099fd-06d6-49c6-b3e6-fd8763f50408","status":403,"code":"FORBIDDEN"}
+{"requestId":"c1b92328-9abb-4a06-8ca3-edff5f803384","status":409,"code":"VERSION_CONFLICT"}
+{"requestId":"c599afa7-449c-403f-b1cb-b72a75fc39c7","status":422,"code":"ZodError"}
+✔ platform: company setup is versioned, resumable, audited and server-authorized (173.362129ms)
+✔ platform: schedules suggest dates, empty batches create no orders, and preserve policy history (103.97537ms)
+✔ platform: populated legacy migration preserves IDs/history and rejects ambiguous company membership (3443.772487ms)
+{"requestId":"b01621f3-efb1-4ae6-838c-6386439bda1e","status":404,"code":"NOT_FOUND"}
+{"requestId":"13a45a82-0901-4cd8-8e20-0e9c54a91ec2","status":404,"code":"NOT_FOUND"}
+{"requestId":"5a3e4e11-8ff3-4060-9948-2de1b5f9a7b0","status":404,"code":"NOT_FOUND"}
+✔ platform: two authenticated companies cannot read, mutate, search or export each other's records (194.728687ms)
+{"requestId":"2cf011a6-0ad7-450e-a778-afbc6c5d24f2","status":409,"code":"OPERATION_SCOPE"}
+✔ access: warehouse creation, explicit switch and receipt use server-derived scope (122.376862ms)
+{"requestId":"c2b29059-73e9-49df-99ed-661ae422c634","status":404,"code":"NOT_FOUND"}
+{"requestId":"6c900b15-71db-4797-a17b-72100f27ae7e","status":404,"code":"NOT_FOUND"}
+{"requestId":"d3584ae3-6ae6-47a6-935c-fc36e8c4b890","status":404,"code":"NOT_FOUND"}
+{"requestId":"c8de3a96-f3fe-4f31-af04-df1b392229f0","status":404,"code":"NOT_FOUND"}
+{"requestId":"199f2436-6c6e-48c1-b963-f71a8a24a202","status":404,"code":"NOT_FOUND"}
+✔ access: warehouse reads, search, files, labels, jobs and relationships are isolated (153.086446ms)
+✔ access: company membership alone grants no warehouse and revocation blocks cached replay (98.675842ms)
+{"requestId":"c8aa12b7-8185-4d88-87cc-5d93a9a4bb2e","status":403,"code":"WAREHOUSE_ACCESS"}
+{"requestId":"25152bcb-5ea7-4f7e-a8e1-22c047559b95","status":403,"code":"FORBIDDEN"}
+{"requestId":"16bdd6d0-5a50-49bd-b8fc-f90ecc59ec7e","status":403,"code":"FORBIDDEN"}
+{"requestId":"0a49fdd4-876d-42d3-8b30-fc35a893a809","status":422,"code":"LAST_ADMINISTRATOR"}
+{"requestId":"b63900cd-184c-4e17-8f29-176e17e88cbe","status":409,"code":"VERSION_CONFLICT"}
+✔ access: unauthorized context switching, last administrator removal and stale access edits fail safely (71.535403ms)
+{"requestId":"a1c64ed0-1619-492b-b9b9-12cd7816a21f","status":404,"code":"NOT_FOUND"}
+✔ access: order, preparation, allocation and readiness remain inside their selected warehouse (142.40088ms)
+{"requestId":"e5902255-3729-4813-87e9-44d5a238734d","status":403,"code":"FORBIDDEN"}
+{"requestId":"e5e9e79f-1cc0-4560-9305-923ce5776a95","status":401,"code":"UNAUTHENTICATED"}
+✔ access: one identity switches company roles and membership revocation keeps recovery available (139.138629ms)
+{"requestId":"b7324c00-d206-4104-ae4d-5d48e47a51c0","status":403,"code":"WAREHOUSE_ACCESS"}
+✔ access: queued exports and existing document sessions fail closed after warehouse grant revocation (124.718424ms)
+✔ access: restore preserves memberships, warehouses and audit scopes without duplicate bootstrap rows (2569.414336ms)
+✔ access: legacy v2 backup restores only its original namespace and exact home membership (3803.150674ms)
+✔ access: device draft namespaces never fall back across warehouses or companies (2.336808ms)
+{"requestId":"9e164015-3629-461e-b9b1-17b5904971f8","status":409,"code":"CONTEXT_CHANGED"}
+✔ access: stale browser context headers reject writes before applying a command (49.354442ms)
+✔ access: concurrent administrator demotions leave one active administrator (17.206261ms)
+✔ access: an unrecognised legacy role is retained for review but grants no active session (5.091836ms)
+✔ imports: preview persists original evidence with zero product/stock changes and retry deduplication (24.80021ms)
+✔ imports: valid commit is atomic/idempotent and audit links retain source after downstream receipt (39.36473ms)
+✔ imports: invalid rows/duplicate SKU/unknown unit block entire batch with no partial commit (32.214837ms)
+✔ imports: catalogue changes after preview return recoverable conflict, retaining source/mapping (16.30028ms)
+✔ imports: concurrent overlapping commits create one catalogue identity only (34.342841ms)
+{"requestId":"111f8301-da64-4d91-9f07-520e89eae5d4","status":404,"code":"NOT_FOUND"}
+{"requestId":"4f997743-e5e9-46fb-9981-be708ad92a53","status":404,"code":"NOT_FOUND"}
+{"requestId":"c9c7b156-186a-4fdd-8f07-4627c0de469f","status":404,"code":"NOT_FOUND"}
+{"requestId":"762ae9bb-c7e6-4c3b-8188-54f3a769612c","status":403,"code":"FORBIDDEN"}
+{"requestId":"de2c1fa4-623a-4bfe-a584-7a381b19053f","status":403,"code":"FORBIDDEN"}
+{"requestId":"4749067f-9229-4317-9466-64b4bf7c7bfd","status":422,"code":"CURSOR"}
+✔ imports: HTTP permissions, cross-company/warehouse reads/reports/commit/list are isolated (133.146785ms)
+✔ imports: v4 restore retains originals/links and legacy v3 restores with empty imports (7127.99204ms)
+✔ imports: an insertion failure rolls back every product/link/event and retry recovers (37.049251ms)
+{"requestId":"605c35ae-c13a-49e5-a647-da8b3c003d47","status":404,"code":"NOT_FOUND"}
+{"requestId":"dc71e973-2f46-45c4-86c3-9d0dade0c4df","status":404,"code":"NOT_FOUND"}
+{"requestId":"0ec08ec2-3ea3-42f1-898f-959ee09240a5","status":404,"code":"NOT_FOUND"}
+✔ imports: second-company HTTP session cannot read/export/commit the first company preview (79.008671ms)
+{"requestId":"e0bdaaf9-2e2e-4ea5-aa38-f722ef35c7c8","status":422,"code":"ZodError"}
+{"requestId":"8dc6b9bf-94cc-454f-971f-209f7d42d840","status":422,"code":"UNIT_MISMATCH"}
+{"requestId":"f0ae3b6c-e5e5-4ede-bfea-6abe60fd3d71","status":422,"code":"DESTINATION_AUTHORIZATION"}
+✔ customer order form: multi-product order is atomic, scoped and idempotent (73.401838ms)
+✔ pallet group: multiple independent pallets, scoped, versioned and retry-safe (48.509938ms)
+{"requestId":"0261840c-daaa-4916-ab88-074b7fcfc0aa","status":403,"code":"FORBIDDEN"}
+{"requestId":"076e3a3c-8d60-4796-87ed-b74810ea339c","status":409,"code":"GROUP_MEMBERSHIP"}
+✔ pallet group: duplicate grouping and unauthorized list fail closed (81.312048ms)
+✔ pallet group: backup restores active and removed membership history; v4 remains readable (5292.17487ms)
+ℹ tests 88
+ℹ suites 0
+ℹ pass 87
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 41801.300795
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> jadesun-warehouse@0.1.0 build
+> vite build --config vite.config.ts
+
+vite v8.3.5 building client environment for production...
+transforming...
+✓ 2087 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.65 kB │ gzip:   0.38 kB
+dist/assets/index-DvdGwVGR.css   43.02 kB │ gzip:   9.97 kB
+dist/assets/index-SfvLeUM3.js   522.50 kB │ gzip: 157.39 kB
+
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 714ms

@@ -1,0 +1,4 @@
+JADESUN-LOCAL-001
+Verified source commit: 298dba93009b560e89aaba2fa468a4a80589ba2d
+Verification: npm run verify, 35 tests + strict TypeScript + frontend build passed.
+Native PostgreSQL and responsive browser gates: see VERIFICATION.md.

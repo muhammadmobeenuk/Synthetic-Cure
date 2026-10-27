@@ -1,0 +1,86 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> jadesun-warehouse@0.1.0 verify
+> npm run typecheck && npm test && npm run build
+
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> jadesun-warehouse@0.1.0 typecheck
+> tsc --noEmit
+
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> jadesun-warehouse@0.1.0 test
+> node --import tsx --test tests/*.test.ts
+
+✔ decimal totals retain unknown counts and do not turn unknown into zero (2274.964011ms)
+✔ Europe/London business date across both daylight-saving transitions (15.304468ms)
+✔ duplicate receipt and canonical replay create one stable physical identity (19.591732ms)
+✔ changed payload cannot reuse an idempotency key (3.145407ms)
+✔ unknown pack size remains unknown and cannot allocate stock (4.666118ms)
+✔ two concurrent moves: one wins; stale command returns current version (8.330142ms)
+✔ offline replay movement is idempotent (11.406942ms)
+✔ moving a pallet changes effective locations; removing one preserves others (35.97855ms)
+✔ one box cannot belong to two pallets and nesting is unsupported (3.831527ms)
+✔ concurrent allocation of last box succeeds once (12.503933ms)
+✔ order cancellation releases allocations with retained event (8.420671ms)
+✔ repacking conserves exact quantity and creates a different box identity (22.803033ms)
+✔ dated preparation selects existing orders only and never repeats them (4.442295ms)
+✔ Wednesday workflow reaches ready without dispatch; physical staging required (75.429803ms)
+✔ unrelated box rejected; duplicate load does not change physical box count (9.031188ms)
+✔ driver assignment history and separate custody dispatch (14.111093ms)
+✔ partial delivery keeps outstanding; returns stay held (20.053019ms)
+✔ checked pallet membership changes invalidate verification (12.494108ms)
+✔ immutable audit events reject silent overwrites (3.488197ms)
+✔ foreign organization references and role elevation rejected (1.223459ms)
+✔ failed receipt transaction leaves no partial box or event (6.147561ms)
+✔ database-backed export reaches completed authoritative result (6.767133ms)
+✔ backup and restore recover domain data plus private file hash (1502.955131ms)
+{"requestId":"530d1107-6c5d-4e99-a515-7a4dfa0cf60c","status":401,"code":"UNAUTHENTICATED"}
+{"requestId":"c09f669a-21cb-479f-8471-7c27873387ec","status":403,"code":"CSRF"}
+{"requestId":"658c5d8f-a3ae-4129-9daa-9223c93ece17","status":403,"code":"FORBIDDEN"}
+{"requestId":"c9ce713d-c169-421d-8d4d-4bf34fca23e1","status":404,"code":"NOT_FOUND"}
+{"requestId":"74abd7d8-eadf-4f25-b186-89bdc64532fc","status":404,"code":"NOT_FOUND"}
+✔ HTTP sessions, CSRF, authorization, private documents and foreign IDs (94.831112ms)
+{"requestId":"4bafa0f8-0a71-41e6-a579-cd16db5c66fb","status":403,"code":"FORBIDDEN"}
+✔ HTTP driver list returns assigned trip only and denies source documents (21.494882ms)
+✔ actual HTTP driver reassignment preserves before/after audit history (23.885697ms)
+✔ mixed-customer pallet manifests load onto one permitted trip (184.785021ms)
+✔ HTTP count submission persists unique observations and review without stock adjustment (26.945037ms)
+{"requestId":"d33eec8b-a7aa-4ee1-b317-347f29373064","status":403,"code":"FORBIDDEN"}
+✔ HTTP return disposition needs supervisor permission and releases only returned quantity (36.511363ms)
+{"requestId":"13368027-1ea5-4fbd-bcb8-e1f2b1faedb7","status":422,"code":"UPLOAD_SIGNATURE"}
+{"requestId":"392e8b2c-360c-4ed0-9a71-c23f4f3576ae","status":401,"code":"UNAUTHENTICATED"}
+{"requestId":"ddfaa4d5-2ecb-4222-a3bf-b5f469c87da0","status":403,"code":"FORBIDDEN"}
+{"requestId":"00a4d223-9f34-4a51-a043-08adfa9cf507","status":413,"code":"LIMIT_FILE_SIZE"}
+{"requestId":"afca1511-d630-4ff4-b654-425c7d5298bc","status":500,"code":"ENOTDIR"}
+{"requestId":"8165453b-5ffa-4d91-bfcb-3dd4f0691377","status":404,"code":"NOT_FOUND"}
+✔ photo upload validates signatures, retries once, stays private, and survives upload failure (95.46909ms)
+✔ checked order amendment forces reconciliation and blocks stale loading (76.035083ms)
+✔ preparation add/remove and carry preserve audit without repeating orders (49.791939ms)
+✔ authorized partial dispatch creates an outstanding unassigned shipment (107.522384ms)
+✔ cross-customer destination requires an explicit authorization (29.773192ms)
+✔ operational text and status combinations meet WCAG normal-text contrast (0.501906ms)
+ℹ tests 35
+ℹ suites 0
+ℹ pass 35
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5594.213887
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> jadesun-warehouse@0.1.0 build
+> vite build --config vite.config.ts
+
+vite v8.3.5 building client environment for production...
+transforming...
+✓ 1980 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.63 kB │ gzip:   0.36 kB
+dist/assets/index-WboJA8gG.css   37.81 kB │ gzip:   9.00 kB
+dist/assets/index-BVKbBVh2.js   378.66 kB │ gzip: 116.46 kB
+
+✓ built in 234ms

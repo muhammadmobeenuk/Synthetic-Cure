@@ -1,0 +1,57 @@
+import {useEffect,useState} from 'react';
+import {useQuery} from '@tanstack/react-query';
+import {api,ApiError,newOperation,saveDraft,getDraft,deleteDraft} from './api';
+import {draftScope,type Identity} from './draft-scope';
+import {registerPendingCapture} from './work-preservation';
+import {parseCsv,errorCsv} from '../../../packages/domain/csv';
+import {importFields,productProfiles,productUnits} from '../../../packages/contracts/imports';
+const labels:Record<string,string>={sku:'Product SKU',name:'English name',name_zh:'Chinese name · optional',profile:'Product profile',unit:'Base unit',handling:'Verified handling instructions · optional'};
+const blankMapping=()=>({sku:null,name:null,name_zh:null,profile:null,unit:null,handling:null} as Record<string,number|null>);
+export function ProductImport({actor,onSaved}:{actor:Identity;onSaved:()=>Promise<void>}){
+ const scope=draftScope(actor),[open,setOpen]=useState(false),[csv,setCsv]=useState(''),[filename,setFilename]=useState('products.csv'),[reason,setReason]=useState(''),[mapping,setMapping]=useState(blankMapping),[report,setReport]=useState<any>(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[previewOperation,setPreviewOperation]=useState(newOperation),[commitOperation,setCommitOperation]=useState(newOperation),[cursor,setCursor]=useState('');
+ const history=useQuery({queryKey:['product-imports',scope,cursor],queryFn:()=>api('/imports/products'+(cursor?'?before='+encodeURIComponent(cursor):'')),enabled:open,retry:false});
+ let parsed:ReturnType<typeof parseCsv>|null=null,parseError='';if(csv)try{parsed=parseCsv(csv)}catch(e){parseError=(e as Error).message;}
+ const draft=()=>({csv,filename,reason,mapping,previewOperation,commitOperation,reportId:report?.id,_ownerUserId:actor.id});
+ const persist=async()=>{if(csv&&report?.status!=='committed')await saveDraft(scope,'product-import',draft());};
+ useEffect(()=>open?registerPendingCapture(persist):undefined,[open,csv,filename,reason,mapping,previewOperation,commitOperation,report?.id,scope]);
+ function changed(){setReport(null);setError('');setNotice('');setPreviewOperation(newOperation());setCommitOperation(newOperation());}
+ function source(value:string,name=filename){let keep=false;try{keep=JSON.stringify(parseCsv(value).headers)===JSON.stringify(parseCsv(csv).headers)}catch{}setCsv(value);setFilename(name);if(!keep)setMapping(blankMapping());changed();}
+ async function load(id:string){setBusy(true);setError('');try{const r=await api('/imports/products/'+id);setReport(r);setCsv(r.source_csv);setFilename(r.filename);setReason(r.reason);setMapping(r.mapping);setCommitOperation(newOperation());setNotice('Saved batch reopened. Validation reflects the current catalogue.');}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
+ async function savePreview(){setBusy(true);setError('');setNotice('');try{await persist();const r=await api('/imports/products/preview',{clientOperationId:previewOperation,csv,filename,mapping,reason});setReport(r);setCommitOperation(newOperation());await history.refetch();setNotice('Preview saved · server confirmed. No products or stock added.');}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
+ async function commit(){if(!report)return;setBusy(true);setError('');setNotice('');try{await persist();const r=await api('/imports/products/'+report.id+'/commit',{clientOperationId:commitOperation,expectedVersion:report.version});setReport(r);setNotice(`${r.productIds.length} product records committed · server confirmed. No stock added.`);await deleteDraft(scope,'product-import').catch(()=>{});await history.refetch();try{await onSaved()}catch{setNotice('Import committed. Catalogue refresh failed; reload the catalogue to see the products.')}}catch(e){setError((e as Error).message);if(e instanceof ApiError&&e.details?.rows)setReport(e.details)}finally{setBusy(false)}}
+ function downloadErrors(){const u=URL.createObjectURL(new Blob([errorCsv(report)],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=u;a.download='product-import-errors.csv';a.click();URL.revokeObjectURL(u);}
+ return <section className="panel entity-card product-import">
+ <div className="section-head"><div><h2>Import products from CSV</h2><p>Company catalogue · create only · no opening stock</p></div><button className="btn secondary" disabled={busy} onClick={async()=>{if(open)try{await persist();setOpen(false)}catch{setError('Device draft could not be saved. Keep this screen open.')}else setOpen(true)}}>{open?'Close importer':'Open importer'}</button></div>
+ {open&&<>
+ <ol className="import-steps" aria-label="Import steps"><li>1. Source & mapping</li><li>2. Review validation</li><li>3. Commit products</li></ol>
+ <p>Products are shared within this company. This warehouse records the review context. Prices, quantities, pack conversions and storage requirements are not inferred.</p>
+ <div className="setup-actions"><button className="btn secondary" disabled={busy} onClick={async()=>{try{await persist();setNotice('Saved on this device · not submitted')}catch{setError('Device storage failed. Keep this screen open.')}}}>Save device draft</button><button className="btn secondary" disabled={busy} onClick={async()=>{try{const d=await getDraft(scope,'product-import');if(!d){setNotice('No product import draft in this workspace');return}setCsv(d.csv);setFilename(d.filename);setMapping(d.mapping);setReason(d.reason);setPreviewOperation(d.previewOperation||newOperation());setCommitOperation(d.commitOperation||newOperation());setReport(null);setNotice('Device draft restored. Reopen its saved batch below or validate again.')}catch{setError('Device draft could not be restored')}}}>Restore device draft</button></div>
+ <form onSubmit={e=>{e.preventDefault();void savePreview()}} aria-label="Product CSV source and mapping">
+ <fieldset disabled={busy}><legend>1. Source & mapping</legend>
+ <label>UTF-8 CSV file<input type="file" accept=".csv,text/csv" onChange={async e=>{const f=e.target.files?.[0];if(!f)return;try{if(f.size>262144)throw new Error('Choose CSV no larger than 256 KiB');const value=new TextDecoder('utf-8',{fatal:true}).decode(await f.arrayBuffer());source(value,f.name)}catch(err){setError((err as Error).message)}e.target.value=''}}/></label>
+ <label>Source filename<input required maxLength={200} value={filename} onChange={e=>{setFilename(e.target.value);changed()}}/></label>
+ <label>CSV source · header required<textarea spellCheck={false} rows={6} maxLength={262144} value={csv} onChange={e=>source(e.target.value)} placeholder={'sku,name,name_zh,profile,unit\n001-DEMO,Synthetic product,示例产品,General goods,piece'} aria-describedby="import-format"/></label>
+ <p id="import-format">Comma-separated · quoted commas/newlines supported · 500 rows maximum. SKU spelling and leading zeros are preserved. Blank optional values remain unconfirmed.</p>
+ {parseError&&<p className="notice error" role="alert">{parseError}</p>}
+ {parsed&&<div className="import-mapping">{importFields.map(f=><label key={f}>{labels[f]}<select required={!['name_zh','handling'].includes(f)} value={mapping[f]??''} onChange={e=>{setMapping({...mapping,[f]:e.target.value===''?null:Number(e.target.value)});changed()}}><option value="">{['name_zh','handling'].includes(f)?'Not imported · unconfirmed':'Choose source column'}</option>{parsed!.headers.map((h,i)=><option key={i} value={i}>{i+1}. {h}</option>)}</select></label>)}</div>}
+ <details><summary>Supported values · no automatic conversion</summary><p>Profiles: {productProfiles.join(' · ')}</p><p>Base units: {productUnits.join(' · ')}</p><p>Values must match exactly. Profiles do not confirm temperature or handling requirements.</p></details>
+ <label>Review source / reason<input required minLength={3} maxLength={1000} value={reason} onChange={e=>{setReason(e.target.value);changed()}}/></label>
+ </fieldset>
+ <button className="btn primary" disabled={busy||!parsed||!reason.trim()||['sku','name','profile','unit'].some(f=>mapping[f]===null)}>{busy?'Working…':'Save validation preview'}</button>
+ </form>
+ {error&&<div className="notice error" role="alert"><span>{error} Your source and mapping remain available.</span></div>}
+ {notice&&<p className="notice success" role="status">{notice}</p>}
+ {report&&<section className="import-review" aria-label="Product import validation">
+ <div className="section-head"><div><h3>2. {report.status==='committed'?'Committed batch':'Review before commit'}</h3><p className="break-id">Batch {report.id} · v{report.version}</p></div><span className="badge">{report.status==='committed'?'Committed':'Awaiting review'}</span></div>
+ <p><strong>{report.totals.rows} rows · {report.totals.valid} valid · {report.totals.invalid} need attention</strong></p>
+ {report.ignoredColumns.length>0&&<p className="notice warning">Ignored columns: {report.ignoredColumns.map((c:any)=>`${c.index+1}. ${c.name}`).join(' · ')}. Their values will not be imported.</p>}
+ <div className="setup-actions"><button className="btn secondary" disabled={busy} onClick={()=>void load(report.id)}>Refresh validation</button><button className="btn secondary" onClick={downloadErrors}>Download error report</button></div>
+ <div className="import-rows">{report.rows.map((r:any)=><article key={r.line} className={'import-row '+(r.issues.length?'has-errors':'')}><div><small>Source line {r.line}</small><strong>SKU · {r.values.sku||'Missing'}</strong><span>{r.values.name||'Name missing'}</span><span lang="zh">{r.values.name_zh||'Chinese name unconfirmed'}</span></div><div><span>Unit · {r.values.unit||'Missing'}</span><span>Profile · {r.values.profile||'Missing'}</span><span>Handling · {r.values.handling||'Unconfirmed'}</span></div><ul aria-label={'Validation for source line '+r.line}>{r.issues.length?r.issues.map((i:any,n:number)=><li key={n}>{i.field}: {i.message}</li>):<li>{report.status==='committed'?'✓ Product created':'✓ Valid for create'}</li>}</ul></article>)}</div>
+ <p>Pack definitions and traceability requirements remain unconfirmed. This import creates catalogue identities only.</p>
+ {report.status==='review'&&<button className="btn primary" disabled={busy||!report.canCommit} onClick={()=>void commit()}>{busy?'Confirming with server…':`3. Commit ${report.totals.rows} products`}</button>}
+ {report.status==='committed'&&<p role="status">{report.productIds.length} product identities recorded. Repeated submission will reuse this batch.</p>}
+ </section>}
+ <section aria-label="Saved product import batches"><h3>Saved batches · this warehouse</h3>{history.isPending?<p>Loading import history…</p>:history.error?<div role="alert"><p>{history.error.message}</p><button className="btn secondary" onClick={()=>void history.refetch()}>Retry history</button></div>:<>{!history.data?.items.length&&<p>No saved product import batches.</p>}{history.data?.items.map((b:any)=><button className="import-history" key={b.id} disabled={busy} onClick={()=>void load(b.id)}><strong>{b.filename}</strong><span>{b.status==='committed'?'Committed':'Needs review'} · {new Date(b.created_at).toISOString()}</span><small>{b.id}</small></button>)}<div className="setup-actions">{cursor&&<button className="btn secondary" onClick={()=>setCursor('')}>Latest batches</button>}{history.data?.nextCursor&&<button className="btn secondary" onClick={()=>setCursor(history.data?.nextCursor)}>Older batches</button>}</div></> }</section>
+ </>}
+ </section>;
+}

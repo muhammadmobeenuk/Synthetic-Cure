@@ -1,0 +1,119 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> jadesun-warehouse@0.1.0 verify
+> npm run typecheck && npm test && npm run build
+
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> jadesun-warehouse@0.1.0 typecheck
+> tsc --noEmit
+
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> jadesun-warehouse@0.1.0 test
+> node --import tsx --test tests/*.test.ts
+
+✔ decimal totals retain unknown counts and do not turn unknown into zero (7012.00805ms)
+✔ Europe/London business date across both daylight-saving transitions (18.551277ms)
+✔ duplicate receipt and canonical replay create one stable physical identity (53.379944ms)
+✔ changed payload cannot reuse an idempotency key (4.829601ms)
+✔ unknown pack size remains unknown and cannot allocate stock (13.800515ms)
+✔ two concurrent moves: one wins; stale command returns current version (24.804077ms)
+✔ offline replay movement is idempotent (17.533694ms)
+✔ moving a pallet changes effective locations; removing one preserves others (140.545476ms)
+✔ one box cannot belong to two pallets and nesting is unsupported (9.740482ms)
+✔ concurrent allocation of last box succeeds once (32.026773ms)
+✔ order cancellation releases allocations with retained event (11.687106ms)
+✔ repacking conserves exact quantity and creates a different box identity (58.571782ms)
+✔ dated preparation selects existing orders only and never repeats them (11.596998ms)
+✔ Wednesday workflow reaches ready without dispatch; physical staging required (172.487093ms)
+✔ unrelated box rejected; duplicate load does not change physical box count (36.245456ms)
+✔ driver assignment history and separate custody dispatch (54.527304ms)
+✔ partial delivery keeps outstanding; returns stay held (54.664269ms)
+✔ checked pallet membership changes invalidate verification (26.950441ms)
+✔ immutable audit events reject silent overwrites (6.095081ms)
+✔ foreign organization references and role elevation rejected (2.839367ms)
+✔ failed receipt transaction leaves no partial box or event (51.442188ms)
+✔ database-backed export reaches completed authoritative result (17.491524ms)
+✔ backup and restore recover domain data plus private file hash (3968.668958ms)
+{"requestId":"9e37c35a-8c49-4198-b8d2-4c3cfbb85e3e","status":401,"code":"UNAUTHENTICATED"}
+{"requestId":"64a64f06-648f-4966-b349-742b635569c8","status":403,"code":"CSRF"}
+{"requestId":"eabbd4c0-9004-40bf-a3e2-d1bba0b6f060","status":403,"code":"FORBIDDEN"}
+{"requestId":"543b6517-bf40-46b3-84bf-3868f532bfc3","status":404,"code":"NOT_FOUND"}
+{"requestId":"ae2c7894-6789-4daa-be4b-2f5d891ce08f","status":404,"code":"NOT_FOUND"}
+✔ HTTP sessions, CSRF, authorization, private documents and foreign IDs (233.751345ms)
+{"requestId":"80af8914-421d-4ccc-beab-38917dfeb357","status":403,"code":"FORBIDDEN"}
+✔ HTTP driver list returns assigned trip only and denies source documents (50.989474ms)
+✔ actual HTTP driver reassignment preserves before/after audit history (47.210513ms)
+✔ mixed-customer pallet manifests load onto one permitted trip (798.285255ms)
+✔ HTTP count submission persists unique observations and review without stock adjustment (141.825443ms)
+{"requestId":"6af25638-9625-4c5c-8a8c-4e078c4333df","status":403,"code":"FORBIDDEN"}
+✔ HTTP return disposition needs supervisor permission and releases only returned quantity (190.89002ms)
+{"requestId":"0a7ab0c0-b5b7-4ae0-a533-06a4f8aa7525","status":422,"code":"UPLOAD_SIGNATURE"}
+{"requestId":"22285ef0-f9a6-4d28-8b76-0c9ccb18e4be","status":401,"code":"UNAUTHENTICATED"}
+{"requestId":"9542ac66-0bbf-45cb-8bcb-7b79eb95b793","status":403,"code":"FORBIDDEN"}
+{"requestId":"0c6fc286-6425-4575-bc2d-5bcafdd1f0e2","status":413,"code":"LIMIT_FILE_SIZE"}
+{"requestId":"e453cec8-b73d-4731-abf5-d4a5da1d9f20","status":500,"code":"ENOTDIR"}
+{"requestId":"5b80f843-e6ee-46d0-82aa-24dd1558a3f1","status":404,"code":"NOT_FOUND"}
+✔ photo upload validates signatures, retries once, stays private, and survives upload failure (290.52893ms)
+✔ checked order amendment forces reconciliation and blocks stale loading (539.666253ms)
+✔ preparation add/remove and carry preserve audit without repeating orders (213.060157ms)
+✔ authorized partial dispatch creates an outstanding unassigned shipment (594.407098ms)
+✔ cross-customer destination requires an explicit authorization (193.060443ms)
+✔ operational text and status combinations meet WCAG normal-text contrast (3.628436ms)
+✔ audit: repeated physical load with a different operation ID is a visible no-op (248.30988ms)
+✔ audit: reporting an issue after checking invalidates readiness and loaded marks (228.44052ms)
+✔ audit: dispatch rechecks open issues even if checking metadata was unchanged (200.432965ms)
+✔ audit: unverified address blocks ordinary dispatch; supervisor exception requires reason and audit (358.33853ms)
+{"requestId":"a7cd8a93-4499-409e-82b3-8cd4c41ee680","status":403,"code":"FORBIDDEN"}
+✔ audit: reassigned driver cannot receive stale-version state or replay an old handover (356.332794ms)
+✔ audit: repeated loose picks conserve quantity and reuse one picking container (336.612487ms)
+✔ audit: fully picking a source records known empty rather than unknown stock (95.840667ms)
+{"requestId":"14bb386e-08a3-4714-82a8-cc63c15de5f4","status":403,"code":"FORBIDDEN"}
+✔ audit: configured food tracking keeps missing data unconfirmed and validates measured values (122.925166ms)
+✔ audit: verified quantity correction requires authority, reason and previous-value evidence (51.766813ms)
+✔ audit: trip stop sequence follows explicit shipment selection order (249.402733ms)
+{"requestId":"eb688fcd-5ccf-4d62-8200-74bcc4a18ee8","status":403,"code":"FORBIDDEN"}
+✔ audit: verified destination address requires authorized evidence and retains version/history (56.591123ms)
+✔ audit: a physical box can be received before any product is identified (72.327452ms)
+✔ platform: database constraints reject cross-company links including preparation and jobs (12.361067ms)
+{"requestId":"b2bc459d-8b99-4999-abed-05f6e2bb708e","status":403,"code":"FORBIDDEN"}
+✔ platform: export download and workspace results require export permission (100.862776ms)
+✔ platform: worker rejects revoked actors and unsupported job kinds (25.612707ms)
+✔ platform: occupied restore does not overwrite files, and corrupted evidence restores no records (7768.768598ms)
+✔ platform: incomplete backup is rejected instead of silently dropping records (2354.827979ms)
+﹣ platform: native race participants use two independent backend connections (0.297758ms) # SKIP
+✔ platform: SQL migrations preserve quoted semicolons and comments (1.052488ms)
+{"requestId":"4dda77fe-7c37-42b3-8e6f-233b203e93e8","status":403,"code":"FORBIDDEN"}
+{"requestId":"ab1633d5-581e-44e5-9b05-0c052000dd8e","status":409,"code":"VERSION_CONFLICT"}
+{"requestId":"4ae5c771-fadf-44c1-930d-a7dc53b037f8","status":422,"code":"ZodError"}
+✔ platform: company setup is versioned, resumable, audited and server-authorized (231.171993ms)
+✔ platform: schedules suggest dates, empty batches create no orders, and preserve policy history (116.711202ms)
+✔ platform: populated legacy migration preserves IDs/history and rejects ambiguous company membership (4540.021241ms)
+{"requestId":"b1b93a72-5e14-4147-ba89-8708b28871f7","status":404,"code":"NOT_FOUND"}
+{"requestId":"245769ae-9ff8-4b6b-82ae-0be185067cad","status":404,"code":"NOT_FOUND"}
+{"requestId":"cc4c71be-e9e0-4ed4-8359-b03e345698d2","status":404,"code":"NOT_FOUND"}
+✔ platform: two authenticated companies cannot read, mutate, search or export each other's records (218.217977ms)
+ℹ tests 58
+ℹ suites 0
+ℹ pass 57
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 34913.555544
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> jadesun-warehouse@0.1.0 build
+> vite build --config vite.config.ts
+
+vite v8.3.5 building client environment for production...
+transforming...
+✓ 1982 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.63 kB │ gzip:   0.37 kB
+dist/assets/index-DM0wAduo.css   39.51 kB │ gzip:   9.37 kB
+dist/assets/index-BpYJ0Je5.js   394.41 kB │ gzip: 121.48 kB
+
+✓ built in 433ms

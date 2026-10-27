@@ -1,0 +1,16 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> jadesun-warehouse@0.1.0 test:postgres
+> node --import tsx scripts/test-postgres.ts
+
+/workspace/scratch/d491d1d27d34/jadesun-warehouse/scripts/test-postgres.ts:4
+  throw new Error(
+        ^
+
+Error: TEST_DATABASE_URL and TEST_RESTORE_DATABASE_URL are required. Use two isolated, empty PostgreSQL databases; never real operational data.
+    at <anonymous> (/workspace/scratch/d491d1d27d34/jadesun-warehouse/scripts/test-postgres.ts:4:9)
+    at ModuleJob.run (node:internal/modules/esm/module_job:561:25)
+    at async node:internal/modules/esm/loader:647:26
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+
+Node.js v24.22.1

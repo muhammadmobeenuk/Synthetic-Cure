@@ -1,0 +1,57 @@
+{
+  "name": "jadesun-warehouse",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "node --import tsx apps/api/server.ts",
+    "build": "vite build --config vite.config.ts",
+    "start": "node --import tsx apps/api/production.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "verify": "npm run typecheck && npm test && npm run build",
+    "db:migrate": "node --import tsx scripts/migrate.ts",
+    "db:seed": "node --import tsx scripts/seed.ts",
+    "worker": "node --import tsx apps/worker/index.ts",
+    "backup": "node --import tsx scripts/backup.ts",
+    "restore": "node --import tsx scripts/restore.ts",
+    "test:postgres": "node --import tsx scripts/test-postgres.ts"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "0.5.12",
+    "@tanstack/react-query": "5.105.0",
+    "@tailwindcss/vite": "4.3.3",
+    "@vitejs/plugin-react": "6.1.2",
+    "bcryptjs": "3.0.3",
+    "decimal.js": "10.6.0",
+    "express": "5.3.0",
+    "express-rate-limit": "8.7.1",
+    "express-session": "1.19.0",
+    "helmet": "8.3.0",
+    "idb": "8.0.4",
+    "lucide-react": "1.61.0",
+    "multer": "2.5.0",
+    "pg": "8.23.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "tailwindcss": "4.3.3",
+    "zod": "4.6.7",
+    "tsx": "4.23.15"
+  },
+  "devDependencies": {
+    "@types/express": "5.0.6",
+    "@types/express-session": "1.19.0",
+    "@types/multer": "2.3.0",
+    "@types/node": "26.6.5",
+    "@types/pg": "8.23.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@types/supertest": "7.2.1",
+    "supertest": "7.3.1",
+    "typescript": "7.0.2",
+    "vite": "8.3.5"
+  }
+}

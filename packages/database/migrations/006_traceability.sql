@@ -1,0 +1,10 @@
+ALTER TABLE products ADD COLUMN IF NOT EXISTS version integer NOT NULL DEFAULT 1;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS traceability_confirmed boolean NOT NULL DEFAULT false;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS require_lot boolean NOT NULL DEFAULT false;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS require_expiry boolean NOT NULL DEFAULT false;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS require_temperature boolean NOT NULL DEFAULT false;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS temperature_min numeric(8,3);
+ALTER TABLE products ADD COLUMN IF NOT EXISTS temperature_max numeric(8,3);
+ALTER TABLE products ADD COLUMN IF NOT EXISTS traceability_reason text;
+ALTER TABLE contents ADD COLUMN IF NOT EXISTS temperature_c numeric(8,3);
+ALTER TABLE products ADD CONSTRAINT temperature_range_valid CHECK(temperature_min IS NULL OR temperature_max IS NULL OR temperature_min<=temperature_max);
