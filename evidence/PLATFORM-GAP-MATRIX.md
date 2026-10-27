@@ -34,3 +34,12 @@ Baseline BROKEN export and occupied-restore boundaries are fixed and regression-
 
 ## PLATFORM-002 remediation
 Company memberships, server-validated context switching and explicit warehouse grants now work. Operational records/reads/files/jobs/exports carry warehouse scope; composite constraints prevent cross-warehouse relationships. Exact legacy namespace/home membership backfill and v2/v3 restore are covered. Membership/grant revocation, stale context and last-administrator races are tested (PGlite/HTTP). Identity invitations/password lifecycle and all native PostgreSQL gates remain incomplete. Current evidence: PLATFORM-002.md.
+
+## PLATFORM-004 remediation
+1. **Worker reliability:** Long transaction holds during OCR/export replaced by 3-phase lifecycle (short claim transaction with lease duration -> out-of-transaction bounded execution with streamed 500-row batch export -> short finalize transaction with membership/grant re-authorization). Lease expiry crash recovery and dead-letter failure tracking implemented and tested.
+2. **Scoped pagination & search correctness:** Replaced unpaginated/overloaded workspace queries with dedicated `GET /api/v1/search` endpoint using database search indexes (migration 015), deterministic base64url cursors, cross-query cursor validation, and complete warehouse aggregates. Driver queries strictly bounded (`stops` <= 200, `shipments` <= 200, `shipmentLines` <= 500) and isolated from warehouse internal entities.
+3. **Staff provisioning & revocation lifecycle:** Provisioning endpoint (`POST /api/v1/access/staff`) and UI controls added in `AccessControl.tsx`. Direct creation of `users` records with password hashing and company/warehouse grants. Immediate revocation enforcement verified on active sessions (401 UNAUTHENTICATED) and transactional commands (403 UNAUTHORIZED) with last-administrator protection.
+4. **Authoritative deployment health check:** `/api/ready` dual health probe validates database and file storage read/write availability, returning 503 if either service fails.
+5. **Crash & network recovery:** Verified screen-by-screen that unconfirmed responses retain original `clientOperationId` and payload for idempotent replay, 409 conflicts preserve user work, and success appears only upon authoritative server confirmation.
+6. **Native PostgreSQL & devices:** Native PostgreSQL concurrency remains BLOCKED pending provision of disposable database URLs. Physical devices remain unverified.
+

@@ -154,6 +154,14 @@ export const companyConfiguration = versioned.extend({
 });
 
 export const role = z.enum(['administrator','supervisor','operator','dispatcher','driver','reviewer']);
+export const staffProvision = command.extend({
+  email: z.string().email(),
+  name: z.string().trim().min(1).max(120),
+  role,
+  password: z.string().min(8).max(120).optional(),
+  warehouseId: id.optional(),
+  reason: z.string().trim().min(3).max(1000),
+});
 export const membershipChange = command.extend({email:z.email(),expectedVersion:z.number().int().min(0),role,active:z.boolean(),reason:z.string().trim().min(3).max(1000)});
 export const warehouseCreate = command.extend({code:z.string().trim().min(1).max(80),name:z.string().trim().min(1).max(200),address:z.string().trim().max(1000).nullable(),reason:z.string().trim().min(3).max(1000)});
 export const warehouseReview = versioned.extend({name:z.string().trim().min(1).max(200),address:z.string().trim().max(1000).nullable(),reason:z.string().trim().min(3).max(1000)});
@@ -162,3 +170,21 @@ export const contextSwitch = z.object({companyId:id,warehouseId:id.nullable().op
 export const palletGroupCreate=command.extend({tripId:id,name:z.string().trim().min(1).max(120),reason:z.string().trim().min(3).max(1000)}).strict();
 export const palletGroupChange=versioned.extend({palletId:id,reason:z.string().trim().min(3).max(1000)}).strict();
 export const extractionRequest=command.extend({provider:z.enum(['local','gemini']),confirmExternalTransfer:z.boolean()}).strict().refine(p=>p.provider!=='gemini'||p.confirmExternalTransfer,'Confirm that this document will be sent to Google');
+export const searchParams = z.object({
+  entity: z.enum([
+    'boxes',
+    'products',
+    'orders',
+    'pallets',
+    'locations',
+    'shipments',
+    'customers',
+    'trips',
+    'issues',
+    'documents',
+  ]),
+  q: z.string().max(200).default(''),
+  cursor: z.string().max(1024).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+

@@ -1,4 +1,5 @@
 import {randomUUID as uuid} from 'node:crypto';
+import bcrypt from 'bcryptjs';
 import type {DB} from '../database/index.js';
 import {authorize,event,version,type Actor} from './services.js';
 import {requireRule} from './index.js';
@@ -51,3 +52,37 @@ export async function changeWarehouseGrant(t:DB,a:Actor,payload:unknown){
  await event(t,a,p.warehouseId,'access.warehouse_changed',{userId:p.userId,previous:old||null,active:p.active,reason:p.reason});
  return (await t.query('SELECT * FROM warehouse_grants WHERE user_id=$1 AND warehouse_id=$2',[p.userId,p.warehouseId])).rows[0];
 }
+export async function provisionStaff(t:DB,a:Actor,payload:unknown){
+ authorize(a,'manage_access');const p=schemas.staffProvision.parse(payload);await companyLock(t,a);
+ if(p.warehouseId){
+  const wh=(await t.query('SELECT id FROM warehouses WHERE id=$1 AND org_id=$2 AND active',[p.warehouseId,a.org_id])).rows[0];
+  requireRule(wh,'NOT_FOUND','Warehouse not found',404);
+ }
+ let user=(await t.query('SELECT * FROM users WHERE lower(email)=lower($1)',[p.email])).rows[0];
+ const isNew=!user;
+ const passwordHash=p.password?await bcrypt.hash(p.password,10):null;
+ if(!user){
+  const id=uuid();
+  await t.query('INSERT INTO users(id,org_id,email,name,role,active,password_hash) VALUES($1,$2,$3,$4,$5,true,$6)',[id,a.org_id,p.email.toLowerCase(),p.name,p.role,passwordHash]);
+  user=(await t.query('SELECT * FROM users WHERE id=$1',[id])).rows[0];
+  await event(t,a,user.id,'access.user_provisioned',{email:p.email,name:p.name,role:p.role,reason:p.reason});
+ }else{
+  if(passwordHash)await t.query('UPDATE users SET name=$1,active=true,password_hash=$2 WHERE id=$3',[p.name,passwordHash,user.id]);
+  else await t.query('UPDATE users SET name=$1,active=true WHERE id=$2',[p.name,user.id]);
+ }
+ const oldMembership=(await t.query('SELECT * FROM company_memberships WHERE org_id=$1 AND user_id=$2 FOR UPDATE',[a.org_id,user.id])).rows[0];
+ await t.query(`INSERT INTO company_memberships(user_id,org_id,role,active) VALUES($1,$2,$3,true) ON CONFLICT(user_id,org_id) DO UPDATE SET role=$3,active=true,version=company_memberships.version+1`,[user.id,a.org_id,p.role]);
+ await event(t,a,user.id,'access.membership_changed',{previous:oldMembership||null,role:p.role,active:true,reason:p.reason});
+ if(p.warehouseId){
+  const oldGrant=(await t.query('SELECT * FROM warehouse_grants WHERE user_id=$1 AND warehouse_id=$2 FOR UPDATE',[user.id,p.warehouseId])).rows[0];
+  await t.query(`INSERT INTO warehouse_grants(user_id,org_id,warehouse_id,active) VALUES($1,$2,$3,true) ON CONFLICT(user_id,warehouse_id) DO UPDATE SET active=true,version=warehouse_grants.version+1`,[user.id,a.org_id,p.warehouseId]);
+  await event(t,a,p.warehouseId,'access.warehouse_changed',{userId:user.id,previous:oldGrant||null,active:true,reason:p.reason});
+ }
+ return {
+  user:(await t.query('SELECT id,email,name,active,org_id FROM users WHERE id=$1',[user.id])).rows[0],
+  membership:(await t.query('SELECT * FROM company_memberships WHERE org_id=$1 AND user_id=$2',[a.org_id,user.id])).rows[0],
+  grant:p.warehouseId?(await t.query('SELECT * FROM warehouse_grants WHERE user_id=$1 AND warehouse_id=$2',[user.id,p.warehouseId])).rows[0]:null,
+  isNew,
+ };
+}
+

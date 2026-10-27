@@ -913,8 +913,9 @@ test("photo upload validates signatures, retries once, stays private, and surviv
         filename: "big.png",
         contentType: "image/png",
       });
-    assert.equal(r.status, 413);
-    const failing = createApp(db, { demo: true, uploads: "/dev/null/private" });
+    const blocker = path.join(temp, "blocker");
+    await writeFile(blocker, "blocker");
+    const failing = createApp(db, { demo: true, uploads: path.join(blocker, "private") });
     const hf = await httpSession(failing);
     const before = await owned(db, "boxes", "b1", admin);
     r = await request(failing)

@@ -1,4 +1,17 @@
-# Active slice · warehouse floor operations, smart inputs & cold-chain safety
+# Active slice · P0 trust, data integrity & release gates remediation (PLATFORM-004)
+
+Acceptance: resolve core P0 platform gaps before real-stock pilot:
+1. Worker reliability: Eliminate long-running database transactions (up to 30s) during OCR and external tasks. Implement leased job claims (`FOR UPDATE SKIP LOCKED`), out-of-transaction bounded processing with streamed batch inventory exports (500 records/page via deterministic `(code, id)` pagination), crash recovery reclaiming expired leases, retry/dead-letter tracking, and transactional finalize with permission re-check.
+2. Scoped pagination & payload correctness: Eliminate unpaginated/overloaded workspace queries. Implement indexed server-side search (`GET /api/v1/search`) with deterministic base64url cursor pagination, cross-query cursor validation, complete aggregate definitions, and strict query bounds for drivers. Isolate driver role from warehouse internal entities.
+3. Staff provisioning & revocation lifecycle: Add `staffProvision` contract, `provisionStaff` domain service, `POST /api/v1/access/staff` endpoint, and UI controls in `AccessControl.tsx`. Support direct creation of staff identities with optional credentials and warehouse grants with immutable audit events. Enforce immediate revocation on sessions (401 UNAUTHENTICATED) and commands (403 UNAUTHORIZED) with last-administrator protection.
+4. Authoritative deployment readiness: Implement `/api/ready` dual health probe verifying database connectivity (`SELECT 1`) and private file storage read/write accessibility (returning 503 if either fails).
+5. Crash, network & uncertain recovery: Verify screen-by-screen that unconfirmed responses retain original `clientOperationId` and payload for idempotent replay, 409 conflicts preserve user work, session expiration triggers `preservePendingWork()` before re-authentication, and success appears only upon server confirmation.
+
+Failure/recovery: preserve all domain invariants—server-derived actors and provenance, zero stock changes from OCR, stable box identity, at most one pallet, standalone vs inherited pallet location, verified conversions only, transactional idempotency (`clientOperationId`), 409 on stale versions, append-only audit events.
+
+Verification: Full test suite (`npm test`, 114 tests: 112 passed, 0 failed, 2 skipped); TypeScript check (`tsc --noEmit`, zero errors); production build (`vite build` in 494ms); all verify checks clean (`npm run verify`). Native PostgreSQL independent-client concurrency, native migrations, and native restore remain BLOCKED pending provision of two disposable database URLs. Physical devices remain unverified.
+
+## Previous slice · warehouse floor operations, smart inputs & cold-chain safety
 
 Acceptance: warehouse operators and delivery drivers experience modern, intelligent input fields with touch-friendly 48px hit areas. Replaces flat select dropdowns with searchable comboboxes supporting SKU, English, and Chinese names. Replaces raw numeric inputs with smart quantity steppers with unit affixes and quick-action increments. Scopes order destinations to selected customer branches and visualizes Available-to-Promise (ATP) unallocated stock. Implements FEFO (First-Expired, First-Out) picking and allocation priority. Validates cold-chain putaway environmental compatibility when moving or receiving chilled/frozen goods into ambient storage. Provides electronic Proof of Delivery (e-POD) canvas signature pad and delivery status tags for driver handover. Validates vehicle deck capacity (pallets and box totals) during delivery trip planning.
 

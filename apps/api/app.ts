@@ -7,7 +7,7 @@ import {previewProductImport,reviewProductImport,commitProductImport,listProduct
 import {errorCsv} from '../../packages/domain/csv.js';
 import {productImportPreview,productImportCommit,importedProduct} from '../../packages/contracts/imports.js';
 import {contexts,permittedWarehouses,resolveActor,validateActor,legacyWarehouse} from "../../packages/domain/context.js";
-import {accessDirectory,changeMembership,createWarehouse,reviewWarehouse,changeWarehouseGrant} from "../../packages/domain/access.js";
+import {accessDirectory,changeMembership,createWarehouse,reviewWarehouse,changeWarehouseGrant,provisionStaff} from "../../packages/domain/access.js";
 import { configuration, configureCompany } from "../../packages/domain/configuration.js";
 import express, {
   type Request,
@@ -25,6 +25,7 @@ import {
   createHash,
   timingSafeEqual,
 } from "node:crypto";
+import { mkdir, writeFile, unlink } from "node:fs/promises";
 import { LocalPrivateStorage } from "./storage.js";
 import path from "node:path";
 import { z } from "zod";
@@ -133,12 +134,29 @@ export function createApp(
     res.json({ status: "ok", app: "Synthetic Cure Warehouse" }),
   );
   app.get("/api/ready", async (_req, res) => {
-    await db.query("SELECT 1");
-    res.json({
-      status: "ready",
-      database: db.native ? "PostgreSQL" : "PGlite development",
-      demo,
-    });
+    try {
+      await db.query("SELECT 1");
+      const uploadRoot = path.resolve(options.uploads || process.env.UPLOAD_DIR || "runtime/private");
+      const probeKey = ".readiness-probe-" + Date.now();
+      const probePath = path.join(uploadRoot, probeKey);
+      await mkdir(uploadRoot, { recursive: true });
+      await writeFile(probePath, "probe", { mode: 0o600 });
+      await unlink(probePath);
+
+      res.json({
+        status: "ready",
+        database: db.native ? "PostgreSQL" : "PGlite development",
+        storage: "accessible",
+        demo,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      res.status(503).json({
+        status: "unready",
+        error: err.message || "Readiness check failed",
+        database: db.native ? "PostgreSQL" : "PGlite development",
+      });
+    }
   });
   app.use("/api/v1", (req, res, next) => {
     res.setHeader("Cache-Control", "no-store");
@@ -307,19 +325,19 @@ export function createApp(
       ).rows;
       data.stops = (
         await db.query(
-          "SELECT s.*,d.name,d.address FROM stops s JOIN trips t ON t.id=s.trip_id JOIN destinations d ON d.id=s.destination_id WHERE t.org_id=$1 AND t.warehouse_id=$3 AND t.driver_id=$2 ORDER BY t.business_date,s.position,s.id",
+          "SELECT s.*,d.name,d.address FROM stops s JOIN trips t ON t.id=s.trip_id JOIN destinations d ON d.id=s.destination_id WHERE t.org_id=$1 AND t.warehouse_id=$3 AND t.driver_id=$2 ORDER BY t.business_date,s.position,s.id LIMIT 200",
           [org, a.id,a.warehouse_id||"__none__"],
         )
       ).rows;
       data.shipments = (
         await db.query(
-          "SELECT s.*,o.code AS order_code FROM shipments s JOIN trips t ON t.id=s.trip_id JOIN orders o ON o.id=s.order_id WHERE s.org_id=$1 AND s.warehouse_id=$3 AND t.driver_id=$2 ORDER BY s.created_at,s.id",
+          "SELECT s.*,o.code AS order_code FROM shipments s JOIN trips t ON t.id=s.trip_id JOIN orders o ON o.id=s.order_id WHERE s.org_id=$1 AND s.warehouse_id=$3 AND t.driver_id=$2 ORDER BY s.created_at,s.id LIMIT 200",
           [org, a.id,a.warehouse_id||"__none__"],
         )
       ).rows;
       data.shipmentLines = (
         await db.query(
-          "SELECT sl.*,b.code AS box_code,p.name AS product_name FROM shipment_lines sl JOIN shipments s ON s.id=sl.shipment_id JOIN trips t ON t.id=s.trip_id JOIN boxes b ON b.id=sl.box_id JOIN products p ON p.id=sl.product_id WHERE sl.org_id=$1 AND sl.warehouse_id=$3 AND t.driver_id=$2 ORDER BY sl.id",
+          "SELECT sl.*,b.code AS box_code,p.name AS product_name FROM shipment_lines sl JOIN shipments s ON s.id=sl.shipment_id JOIN trips t ON t.id=s.trip_id JOIN boxes b ON b.id=sl.box_id JOIN products p ON p.id=sl.product_id WHERE sl.org_id=$1 AND sl.warehouse_id=$3 AND t.driver_id=$2 ORDER BY sl.id LIMIT 500",
           [org, a.id,a.warehouse_id||"__none__"],
         )
       ).rows;
@@ -423,7 +441,15 @@ export function createApp(
         [org],
       ],
       counts: [
-        `SELECT (SELECT count(*)::int FROM boxes WHERE org_id=$1 AND warehouse_id=$2) boxes,(SELECT count(*)::int FROM pallets WHERE org_id=$1 AND warehouse_id=$2) pallets,(SELECT count(*)::int FROM orders WHERE org_id=$1 AND warehouse_id=$2 AND status='open') orders,(SELECT count(*)::int FROM issues WHERE org_id=$1 AND warehouse_id=$2 AND status='open') issues`,
+        `SELECT (SELECT count(*)::int FROM boxes WHERE org_id=$1 AND warehouse_id=$2) boxes,
+                (SELECT count(*)::int FROM pallets WHERE org_id=$1 AND warehouse_id=$2) pallets,
+                (SELECT count(*)::int FROM orders WHERE org_id=$1 AND warehouse_id=$2 AND status='open') orders,
+                (SELECT count(*)::int FROM issues WHERE org_id=$1 AND warehouse_id=$2 AND status='open') issues,
+                (SELECT count(*)::int FROM products WHERE org_id=$1) products,
+                (SELECT count(*)::int FROM locations WHERE org_id=$1 AND warehouse_id=$2) locations,
+                (SELECT count(*)::int FROM shipments WHERE org_id=$1 AND warehouse_id=$2 AND status NOT IN ('cancelled','completed')) shipments,
+                (SELECT count(*)::int FROM trips WHERE org_id=$1 AND warehouse_id=$2 AND status='planned') trips,
+                (SELECT COALESCE(sum(c.quantity), 0)::text FROM contents c WHERE c.org_id=$1 AND c.warehouse_id=$2 AND c.verified=true) stock_confirmed_units`,
         [org,a.warehouse_id||"__none__"],
       ],
     };
@@ -435,6 +461,356 @@ export function createApp(
       data[key] = (await db.query(sql, params)).rows;
     }
     res.json(data);
+  });
+  app.get("/api/v1/search", async (req, res) => {
+    requireRule(req.actor && req.actor.id, "UNAUTHENTICATED", "Staff identity is unauthenticated", 401);
+    const parsed = schemas.searchParams.parse(req.query);
+    const { entity, q, limit } = parsed;
+    const a = req.actor;
+    const org = a.org_id;
+
+    if (a.role === "driver") {
+      requireRule(["trips", "shipments"].includes(entity), "FORBIDDEN", "Drivers access only assigned trip records", 403);
+    }
+
+    const warehouseScoped = !["products", "customers"].includes(entity);
+    if (warehouseScoped) {
+      requireRule(a.warehouse_id, "WAREHOUSE_ACCESS", "Select an assigned warehouse", 403);
+    }
+    const wh = a.warehouse_id || "__none__";
+
+    let afterId = "";
+    if (parsed.cursor) {
+      requireRule(
+        typeof parsed.cursor === "string" && parsed.cursor.length <= 1024 && /^[A-Za-z0-9_-]+$/.test(parsed.cursor),
+        "CURSOR",
+        "Invalid cursor format",
+        422,
+      );
+      try {
+        const decoded = JSON.parse(Buffer.from(parsed.cursor, "base64url").toString("utf8"));
+        requireRule(
+          decoded && decoded.entity === entity && decoded.q === q && typeof decoded.afterId === "string",
+          "CURSOR",
+          "Invalid cursor payload",
+          422,
+        );
+        afterId = decoded.afterId;
+      } catch (e: any) {
+        if (e instanceof DomainError) throw e;
+        throw new DomainError(422, "CURSOR", "Invalid cursor encoding");
+      }
+    }
+
+    const term = `%${q.trim()}%`;
+    let items: any[] = [];
+    let totalCount = 0;
+    let completeAggregates: Record<string, any> = {};
+
+    if (entity === "boxes") {
+      const countRes = await db.query(
+        `SELECT count(*)::int n,
+                count(*) FILTER (WHERE condition='good')::int good_count,
+                count(*) FILTER (WHERE condition='damaged')::int damaged_count,
+                count(*) FILTER (WHERE condition='hold')::int hold_count
+         FROM boxes b
+         LEFT JOIN customers c ON c.id=b.customer_id
+         LEFT JOIN locations l ON l.id=b.location_id
+         WHERE b.org_id=$1 AND b.warehouse_id=$2
+           AND ($3 = '' OR b.id ILIKE $4 OR b.code ILIKE $4 OR b.source_label ILIKE $4 OR c.name ILIKE $4 OR l.code ILIKE $4)`,
+        [org, wh, q.trim(), term],
+      );
+      totalCount = countRes.rows[0].n;
+      completeAggregates = {
+        total: totalCount,
+        good: countRes.rows[0].good_count,
+        damaged: countRes.rows[0].damaged_count,
+        hold: countRes.rows[0].hold_count,
+      };
+
+      items = (
+        await db.query(
+          `SELECT b.*, c.name customer_name, c.name_zh customer_name_zh, p.code pallet_code, l.code location_code,
+                  COALESCE(b.location_id, p.location_id) effective_location_id,
+                  (SELECT count(*)::int FROM documents d WHERE d.box_id=b.id) photo_count
+           FROM boxes b
+           LEFT JOIN customers c ON c.id=b.customer_id
+           LEFT JOIN pallets p ON p.id=b.pallet_id
+           LEFT JOIN locations l ON l.id=COALESCE(b.location_id, p.location_id)
+           WHERE b.org_id=$1 AND b.warehouse_id=$2
+             AND ($3 = '' OR b.id ILIKE $4 OR b.code ILIKE $4 OR b.source_label ILIKE $4 OR c.name ILIKE $4 OR l.code ILIKE $4)
+             AND b.id > $5
+           ORDER BY b.id
+           LIMIT $6`,
+          [org, wh, q.trim(), term, afterId, limit + 1],
+        )
+      ).rows;
+    } else if (entity === "products") {
+      const countRes = await db.query(
+        `SELECT count(*)::int n FROM products
+         WHERE org_id=$1 AND ($2 = '' OR sku ILIKE $3 OR name ILIKE $3 OR name_zh ILIKE $3)`,
+        [org, q.trim(), term],
+      );
+      totalCount = countRes.rows[0].n;
+      completeAggregates = { total: totalCount };
+
+      items = (
+        await db.query(
+          `SELECT * FROM products
+           WHERE org_id=$1
+             AND ($2 = '' OR sku ILIKE $3 OR name ILIKE $3 OR name_zh ILIKE $3)
+             AND id > $4
+           ORDER BY id
+           LIMIT $5`,
+          [org, q.trim(), term, afterId, limit + 1],
+        )
+      ).rows;
+    } else if (entity === "orders") {
+      const countRes = await db.query(
+        `SELECT count(*)::int n,
+                count(*) FILTER (WHERE status='open')::int open_count,
+                count(*) FILTER (WHERE status='cancelled')::int cancelled_count,
+                count(*) FILTER (WHERE status='completed')::int completed_count
+         FROM orders o
+         JOIN customers c ON c.id=o.customer_id
+         JOIN destinations d ON d.id=o.destination_id
+         WHERE o.org_id=$1 AND o.warehouse_id=$2
+           AND ($3 = '' OR o.code ILIKE $4 OR c.name ILIKE $4 OR d.name ILIKE $4)`,
+        [org, wh, q.trim(), term],
+      );
+      totalCount = countRes.rows[0].n;
+      completeAggregates = {
+        total: totalCount,
+        open: countRes.rows[0].open_count,
+        cancelled: countRes.rows[0].cancelled_count,
+        completed: countRes.rows[0].completed_count,
+      };
+
+      items = (
+        await db.query(
+          `SELECT o.*, c.name customer_name, d.name destination_name
+           FROM orders o
+           JOIN customers c ON c.id=o.customer_id
+           JOIN destinations d ON d.id=o.destination_id
+           WHERE o.org_id=$1 AND o.warehouse_id=$2
+             AND ($3 = '' OR o.code ILIKE $4 OR c.name ILIKE $4 OR d.name ILIKE $4)
+             AND o.id > $5
+           ORDER BY o.id
+           LIMIT $6`,
+          [org, wh, q.trim(), term, afterId, limit + 1],
+        )
+      ).rows;
+    } else if (entity === "pallets") {
+      const countRes = await db.query(
+        `SELECT count(*)::int n FROM pallets p
+         JOIN locations l ON l.id=p.location_id
+         WHERE p.org_id=$1 AND p.warehouse_id=$2
+           AND ($3 = '' OR p.code ILIKE $4 OR l.code ILIKE $4)`,
+        [org, wh, q.trim(), term],
+      );
+      totalCount = countRes.rows[0].n;
+      completeAggregates = { total: totalCount };
+
+      items = (
+        await db.query(
+          `SELECT p.*, l.code location_code, (SELECT count(*)::int FROM boxes b WHERE b.pallet_id=p.id) box_count
+           FROM pallets p
+           JOIN locations l ON l.id=p.location_id
+           WHERE p.org_id=$1 AND p.warehouse_id=$2
+             AND ($3 = '' OR p.code ILIKE $4 OR l.code ILIKE $4)
+             AND p.id > $5
+           ORDER BY p.id
+           LIMIT $6`,
+          [org, wh, q.trim(), term, afterId, limit + 1],
+        )
+      ).rows;
+    } else if (entity === "locations") {
+      const countRes = await db.query(
+        `SELECT count(*)::int n FROM locations
+         WHERE org_id=$1 AND warehouse_id=$2
+           AND ($3 = '' OR code ILIKE $4 OR name ILIKE $4)`,
+        [org, wh, q.trim(), term],
+      );
+      totalCount = countRes.rows[0].n;
+      completeAggregates = { total: totalCount };
+
+      items = (
+        await db.query(
+          `SELECT * FROM locations
+           WHERE org_id=$1 AND warehouse_id=$2
+             AND ($3 = '' OR code ILIKE $4 OR name ILIKE $4)
+             AND id > $5
+           ORDER BY id
+           LIMIT $6`,
+          [org, wh, q.trim(), term, afterId, limit + 1],
+        )
+      ).rows;
+    } else if (entity === "shipments") {
+      const driverFilter = a.role === "driver" ? " AND t.driver_id=$5" : "";
+      const driverParams = a.role === "driver" ? [org, wh, q.trim(), term, a.id] : [org, wh, q.trim(), term];
+
+      const countRes = await db.query(
+        `SELECT count(*)::int n,
+                count(*) FILTER (WHERE s.status='ready')::int ready_count,
+                count(*) FILTER (WHERE s.status='dispatched')::int dispatched_count,
+                count(*) FILTER (WHERE s.status='completed')::int completed_count
+         FROM shipments s
+         JOIN orders o ON o.id=s.order_id
+         JOIN destinations d ON d.id=s.destination_id
+         LEFT JOIN trips t ON t.id=s.trip_id
+         WHERE s.org_id=$1 AND s.warehouse_id=$2
+           AND ($3 = '' OR s.id ILIKE $4 OR o.code ILIKE $4 OR d.name ILIKE $4)` + driverFilter,
+        driverParams,
+      );
+      totalCount = countRes.rows[0].n;
+      completeAggregates = {
+        total: totalCount,
+        ready: countRes.rows[0].ready_count,
+        dispatched: countRes.rows[0].dispatched_count,
+        completed: countRes.rows[0].completed_count,
+      };
+
+      const queryParams = a.role === "driver"
+        ? [org, wh, q.trim(), term, a.id, afterId, limit + 1]
+        : [org, wh, q.trim(), term, afterId, limit + 1];
+
+      const afterClause = a.role === "driver" ? " AND s.id > $6" : " AND s.id > $5";
+      const limitClause = a.role === "driver" ? " LIMIT $7" : " LIMIT $6";
+
+      items = (
+        await db.query(
+          `SELECT s.*, o.code order_code, d.name destination_name
+           FROM shipments s
+           JOIN orders o ON o.id=s.order_id
+           JOIN destinations d ON d.id=s.destination_id
+           LEFT JOIN trips t ON t.id=s.trip_id
+           WHERE s.org_id=$1 AND s.warehouse_id=$2
+             AND ($3 = '' OR s.id ILIKE $4 OR o.code ILIKE $4 OR d.name ILIKE $4)` +
+            driverFilter +
+            afterClause +
+            " ORDER BY s.id" +
+            limitClause,
+          queryParams,
+        )
+      ).rows;
+    } else if (entity === "customers") {
+      const countRes = await db.query(
+        `SELECT count(*)::int n FROM customers
+         WHERE org_id=$1 AND ($2 = '' OR code ILIKE $3 OR name ILIKE $3 OR name_zh ILIKE $3)`,
+        [org, q.trim(), term],
+      );
+      totalCount = countRes.rows[0].n;
+      completeAggregates = { total: totalCount };
+
+      items = (
+        await db.query(
+          `SELECT * FROM customers
+           WHERE org_id=$1
+             AND ($2 = '' OR code ILIKE $3 OR name ILIKE $3 OR name_zh ILIKE $3)
+             AND id > $4
+           ORDER BY id
+           LIMIT $5`,
+          [org, q.trim(), term, afterId, limit + 1],
+        )
+      ).rows;
+    } else if (entity === "trips") {
+      const driverFilter = a.role === "driver" ? " AND t.driver_id=$5" : "";
+      const driverParams = a.role === "driver" ? [org, wh, q.trim(), term, a.id] : [org, wh, q.trim(), term];
+
+      const countRes = await db.query(
+        `SELECT count(*)::int n FROM trips t
+         LEFT JOIN users u ON u.id=t.driver_id
+         WHERE t.org_id=$1 AND t.warehouse_id=$2
+           AND ($3 = '' OR t.code ILIKE $4 OR u.name ILIKE $4 OR t.vehicle ILIKE $4)` + driverFilter,
+        driverParams,
+      );
+      totalCount = countRes.rows[0].n;
+      completeAggregates = { total: totalCount };
+
+      const queryParams = a.role === "driver"
+        ? [org, wh, q.trim(), term, a.id, afterId, limit + 1]
+        : [org, wh, q.trim(), term, afterId, limit + 1];
+
+      const afterClause = a.role === "driver" ? " AND t.id > $6" : " AND t.id > $5";
+      const limitClause = a.role === "driver" ? " LIMIT $7" : " LIMIT $6";
+
+      items = (
+        await db.query(
+          `SELECT t.*, u.name driver_name
+           FROM trips t
+           LEFT JOIN users u ON u.id=t.driver_id
+           WHERE t.org_id=$1 AND t.warehouse_id=$2
+             AND ($3 = '' OR t.code ILIKE $4 OR u.name ILIKE $4 OR t.vehicle ILIKE $4)` +
+            driverFilter +
+            afterClause +
+            " ORDER BY t.id" +
+            limitClause,
+          queryParams,
+        )
+      ).rows;
+    } else if (entity === "issues") {
+      const countRes = await db.query(
+        `SELECT count(*)::int n FROM issues i
+         LEFT JOIN boxes b ON b.id=i.box_id
+         WHERE i.org_id=$1 AND i.warehouse_id=$2
+           AND ($3 = '' OR i.kind ILIKE $4 OR b.code ILIKE $4 OR i.note ILIKE $4)`,
+        [org, wh, q.trim(), term],
+      );
+      totalCount = countRes.rows[0].n;
+      completeAggregates = { total: totalCount };
+
+      items = (
+        await db.query(
+          `SELECT i.*, b.code box_code
+           FROM issues i
+           LEFT JOIN boxes b ON b.id=i.box_id
+           WHERE i.org_id=$1 AND i.warehouse_id=$2
+             AND ($3 = '' OR i.kind ILIKE $4 OR b.code ILIKE $4 OR i.note ILIKE $4)
+             AND i.id > $5
+           ORDER BY i.id
+           LIMIT $6`,
+          [org, wh, q.trim(), term, afterId, limit + 1],
+        )
+      ).rows;
+    } else if (entity === "documents") {
+      const countRes = await db.query(
+        `SELECT count(*)::int n FROM documents
+         WHERE org_id=$1 AND warehouse_id=$2
+           AND ($3 = '' OR name ILIKE $4 OR mime ILIKE $4)`,
+        [org, wh, q.trim(), term],
+      );
+      totalCount = countRes.rows[0].n;
+      completeAggregates = { total: totalCount };
+
+      items = (
+        await db.query(
+          `SELECT id, box_id, name, mime, size, created_at FROM documents
+           WHERE org_id=$1 AND warehouse_id=$2
+             AND ($3 = '' OR name ILIKE $4 OR mime ILIKE $4)
+             AND id > $5
+           ORDER BY id
+           LIMIT $6`,
+          [org, wh, q.trim(), term, afterId, limit + 1],
+        )
+      ).rows;
+    }
+
+    const hasMore = items.length > limit;
+    const resultRows = hasMore ? items.slice(0, limit) : items;
+    const nextCursor = hasMore
+      ? Buffer.from(JSON.stringify({ entity, afterId: resultRows[resultRows.length - 1].id, q })).toString("base64url")
+      : null;
+
+    res.json({
+      entity,
+      query: q,
+      totalCount,
+      completeAggregates,
+      count: resultRows.length,
+      hasMore,
+      nextCursor,
+      items: resultRows,
+    });
   });
   app.get("/api/v1/boxes/:id", async (req, res) => {
     requireRule(
@@ -1269,6 +1645,7 @@ export function createApp(
     res.json((await db.query("SELECT * FROM company_configuration_revisions WHERE org_id=$1 ORDER BY version DESC LIMIT 100",[req.actor.org_id])).rows);
   });
   app.get("/api/v1/access/directory",async(req,res)=>res.json(await accessDirectory(db,req.actor)));
+  app.post("/api/v1/access/staff",run(schemas.staffProvision,"manage_access",()=>"access-staff",(t,a,p)=>provisionStaff(t,a,p)));
   app.post("/api/v1/access/memberships",run(schemas.membershipChange,"manage_access",()=>"access-membership",(t,a,p)=>changeMembership(t,a,p)));
   app.post("/api/v1/warehouses",run(schemas.warehouseCreate,"manage_access",()=>"warehouse-create",(t,a,p)=>createWarehouse(t,a,p)));
   app.post("/api/v1/warehouses/:id/review",run(schemas.warehouseReview,"manage_access",r=>"warehouse-review:"+r.params.id,(t,a,p,r)=>reviewWarehouse(t,a,String(r.params.id),p)));

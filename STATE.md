@@ -1,4 +1,17 @@
-# Current candidate · WMS-MODERN-001
+# Current candidate · PLATFORM-004
+
+Addresses P0 platform trust, worker reliability, scoped pagination, staff provisioning lifecycle, and authoritative deployment readiness:
+- Worker reliability: Eliminates long-running transactions (up to 30s) during OCR and external tasks. Implements leased job claims (`FOR UPDATE SKIP LOCKED`), out-of-transaction bounded execution with streamed 500-record batch inventory export using deterministic `(code, id)` pagination, crash recovery reclaiming expired leases, dead-letter tracking, and transactional finalize with permission re-check.
+- Scoped search and pagination: Migration 015 adds database search indexes. Dedicated `GET /api/v1/search` endpoint supports text search, deterministic base64url cursor pagination, cross-query cursor validation (422 `CURSOR`), and complete warehouse aggregates (totals are never computed from partial pages). Driver queries are bounded (`stops` <= 200, `shipments` <= 200, `shipmentLines` <= 500) and isolated from warehouse internal entities (403 `FORBIDDEN`).
+- Staff provisioning & revocation lifecycle: Added `staffProvision` contract, `provisionStaff` domain function, `POST /api/v1/access/staff` endpoint, and UI controls in `AccessControl.tsx`. Allows administrators to provision staff with credentials, memberships, and warehouse grants. Verified immediate session/command rejection on revocation (401 UNAUTHENTICATED) and last-administrator protection (`LAST_ADMINISTRATOR` 422).
+- Authoritative deployment readiness: `/api/ready` dual health probe validates database connectivity and private file storage read/write accessibility (returning 503 if either fails).
+- Crash and network recovery: Screen audit confirms unconfirmed responses retain original `clientOperationId` and payload for idempotent retry, 409 conflicts preserve user work, and success displays only after authoritative server confirmation.
+
+Verification: Full test suite PASSED (114 tests: 112 passed, 0 failed, 2 skipped: 1 native PostgreSQL skipped, 1 tesseract skipped); strict TypeScript PASSED (`tsc --noEmit`, 0 errors); production bundle build PASSED (`vite build` in 494ms); all verify checks clean (`npm run verify`).
+
+Limits: Native PostgreSQL independent-client concurrency, native migrations, and native restore remain BLOCKED pending provision of two disposable database URLs (`TEST_DATABASE_URL` and `TEST_RESTORE_DATABASE_URL`). Physical warehouse handheld terminals, physical cameras, and Bluetooth ring scanners remain unverified. Production readiness is not claimed.
+
+## Previous candidate · WMS-MODERN-001
 
 Modernizes warehouse floor input ergonomics and strengthens operational safety logic. Integrates high-speed fuzzy searchable comboboxes, quantity steppers with unit affixes and quick-fill triggers, hardware barcode scanner listener (useBarcodeScanner) with GS1-128 AI parser (01, 10, 17, 21), and tactile/auditory Web Audio and haptic feedback (playScanFeedback). Enforces FEFO (First-Expired, First-Out) picking and allocation order. Adds real-time Available-to-Promise (ATP) stock badges to order entry. Scopes destination selection to customer branches. Enforces cold-chain putaway environmental checks across receiving and internal movements. Adds touch-first digital signature pad (SmartSignaturePad) with delivery disposition tags to driver handover e-POD. Adds trip payload deck metrics and pallet capacity validation during trip planning.
 

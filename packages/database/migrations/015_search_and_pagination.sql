@@ -1,0 +1,11 @@
+CREATE INDEX IF NOT EXISTS products_org_sku ON products(org_id, sku);
+CREATE INDEX IF NOT EXISTS products_org_name ON products(org_id, name);
+CREATE INDEX IF NOT EXISTS boxes_scope_code ON boxes(org_id, warehouse_id, code);
+CREATE INDEX IF NOT EXISTS orders_scope_code ON orders(org_id, warehouse_id, code);
+CREATE INDEX IF NOT EXISTS pallets_scope_code ON pallets(org_id, warehouse_id, code);
+CREATE INDEX IF NOT EXISTS locations_scope_code ON locations(org_id, warehouse_id, code);
+CREATE INDEX IF NOT EXISTS shipments_scope_id ON shipments(org_id, warehouse_id, id);
+CREATE INDEX IF NOT EXISTS trips_scope_date ON trips(org_id, warehouse_id, business_date DESC, id);
+CREATE INDEX IF NOT EXISTS stops_scope_pos ON stops(org_id, warehouse_id, trip_id, position);
+CREATE INDEX IF NOT EXISTS contents_scope_prod ON contents(org_id, warehouse_id, product_id);
+CREATE INDEX IF NOT EXISTS jobs_lease_status ON jobs(org_id, warehouse_id, status, available_at);
