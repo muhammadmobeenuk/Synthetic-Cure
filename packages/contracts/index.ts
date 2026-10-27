@@ -1,13 +1,6 @@
 import { z } from "zod";
-export const id = z.string().min(1).max(120);
-export const quantity = z
-  .string()
-  .regex(/^(?:0|[1-9]\d{0,11})(?:\.\d{1,6})?$/)
-  .refine((v) => Number(v) > 0, "Quantity must be greater than zero");
-export const command = z.object({ clientOperationId: z.uuid() });
-export const versioned = command.extend({
-  expectedVersion: z.number().int().positive(),
-});
+export * from "./primitives.js";
+import { id, quantity, command, versioned } from "./primitives.js";
 export const contentsLine = z
   .object({
     productId: id,
@@ -15,6 +8,8 @@ export const contentsLine = z
     unit: z.string().min(1).max(30),
     verified: z.boolean(),
     lotId: id.optional(),
+    catchWeight: quantity.nullable().optional(),
+    packageCount: z.number().int().positive().nullable().optional(),
     temperatureC: z
       .string()
       .regex(/^-?\d{1,5}(?:\.\d{1,3})?$/)
@@ -187,4 +182,9 @@ export const searchParams = z.object({
   cursor: z.string().max(1024).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
+
+export * from './inventory.js';
+export * from './tasks.js';
+export * from './transfers.js';
+export * from './onboarding.js';
 

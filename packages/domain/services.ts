@@ -239,7 +239,7 @@ async function putContents(t: DB, a: Actor, boxId: string, lines: any[]) {
       );
     }
     await t.query(
-      "INSERT INTO contents(id,org_id,box_id,product_id,lot_id,quantity,unit,verified,temperature_c) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+      "INSERT INTO contents(id,org_id,box_id,product_id,lot_id,quantity,unit,verified,temperature_c,catch_weight,package_count) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
       [
         uuid(),
         a.org_id,
@@ -250,6 +250,8 @@ async function putContents(t: DB, a: Actor, boxId: string, lines: any[]) {
         l.unit,
         l.verified,
         l.temperatureC ?? null,
+        l.catchWeight ?? null,
+        l.packageCount ?? null,
       ],
     );
   }

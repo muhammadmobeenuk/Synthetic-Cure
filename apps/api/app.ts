@@ -1,11 +1,119 @@
 import {ocrStatus} from '../worker/ocr.js';
-import {inboundList,createSupplier,createExpectedReceipt,receiveExpectedBox,cancelExpectedReceipt} from '../../packages/domain/inbound.js';
-import {supplierCreate,expectedCreate,expectedReceive,expectedCancel} from '../../packages/contracts/inbound.js';
+import {
+  inboundList,
+  createSupplier,
+  createExpectedReceipt,
+  receiveExpectedBox,
+  cancelExpectedReceipt,
+  listPurchaseOrders,
+  getPurchaseOrder,
+  createPurchaseOrder,
+  receivePurchaseOrderLine,
+  cancelPurchaseOrder,
+  listDiscrepancies,
+  reportDiscrepancy,
+  reviewDiscrepancy,
+  listSupplierReturns,
+  createSupplierReturn,
+  authorizeSupplierReturn,
+  dispatchSupplierReturn,
+} from '../../packages/domain/inbound.js';
+import {
+  supplierCreate,
+  expectedCreate,
+  expectedReceive,
+  expectedCancel,
+  purchaseOrderCreate,
+  purchaseOrderReceive,
+  purchaseOrderCancel,
+  discrepancyReport,
+  discrepancyReview,
+  supplierReturnCreate,
+  supplierReturnAuthorize,
+  supplierReturnDispatch,
+} from '../../packages/contracts/inbound.js';
+import {
+  listStockOwners,
+  createStockOwner,
+  listUnitConversions,
+  createUnitConversion,
+  getInventoryBalances,
+  getInventoryLedger,
+  adjustInventory,
+  moveInventory,
+  reserveInventory,
+  releaseInventory,
+} from '../../packages/domain/inventory.js';
+import {
+  ownerCreate,
+  unitConversionCreate,
+  inventoryAdjust,
+  inventoryMove,
+  inventoryReserve,
+  inventoryRelease,
+} from '../../packages/contracts/inventory.js';
+import {
+  listTasks,
+  createPutawayTask,
+  assignTask,
+  completeTask,
+  cancelTask,
+  listReplenishmentPolicies,
+  setReplenishmentPolicy,
+  triggerReplenishment,
+} from '../../packages/domain/tasks.js';
+import {
+  putawayTaskCreate,
+  taskAssign,
+  taskComplete,
+  taskCancel,
+  replenishmentPolicySet,
+  replenishmentTrigger,
+} from '../../packages/contracts/tasks.js';
+import {
+  listTransferOrders,
+  getTransferOrder,
+  createTransferOrder,
+  dispatchTransferOrder,
+  receiveTransferOrder,
+  cancelTransferOrder,
+} from '../../packages/domain/transfers.js';
+import {
+  transferOrderCreate,
+  transferOrderDispatch,
+  transferOrderReceive,
+  transferOrderCancel,
+} from '../../packages/contracts/transfers.js';
+import {
+  previewProductImport,
+  reviewProductImport,
+  commitProductImport,
+  listProductImports,
+  listCsvImports,
+  reviewCsvImport,
+  previewCsvImport,
+  commitCsvImport,
+  exportCsvImportErrors,
+} from '../../packages/domain/imports.js';
+import {
+  productImportPreview,
+  productImportCommit,
+  importedProduct,
+  csvImportPreview,
+  csvImportCommit,
+} from '../../packages/contracts/imports.js';
+import {
+  getWarehouseOnboarding,
+  saveOnboardingStep,
+  completeOnboardingReview,
+} from '../../packages/domain/onboarding.js';
+import {
+  onboardingStepSave,
+  onboardingReviewComplete,
+} from '../../packages/contracts/onboarding.js';
 import {workerOrderSheet} from '../../packages/domain/worker-sheet.js';
 import {palletGroupList,palletGroupReconciliation,createPalletGroup,changePalletGroup} from '../../packages/domain/pallet-groups.js';
-import {previewProductImport,reviewProductImport,commitProductImport,listProductImports} from '../../packages/domain/imports.js';
 import {errorCsv} from '../../packages/domain/csv.js';
-import {productImportPreview,productImportCommit,importedProduct} from '../../packages/contracts/imports.js';
 import {contexts,permittedWarehouses,resolveActor,validateActor,legacyWarehouse} from "../../packages/domain/context.js";
 import {accessDirectory,changeMembership,createWarehouse,reviewWarehouse,changeWarehouseGrant,provisionStaff} from "../../packages/domain/access.js";
 import { configuration, configureCompany } from "../../packages/domain/configuration.js";
@@ -1665,6 +1773,86 @@ export function createApp(
   app.post('/api/v1/pallet-groups',run(schemas.palletGroupCreate,'dispatch',()=> 'pallet-group-create',(t,a,p)=>createPalletGroup(t,a,p)));
   app.post('/api/v1/pallet-groups/:id/add',run(schemas.palletGroupChange,'dispatch',r=>'pallet-group-add:'+r.params.id,(t,a,p,r)=>changePalletGroup(t,a,String(r.params.id),p,false)));
   app.post('/api/v1/pallet-groups/:id/remove',run(schemas.palletGroupChange,'dispatch',r=>'pallet-group-remove:'+r.params.id,(t,a,p,r)=>changePalletGroup(t,a,String(r.params.id),p,true)));
+
+  // --- P1 Stock Owners & Inventory Balances / Ledger ---
+  app.get("/api/v1/stock-owners", async (req, res) => res.json(await listStockOwners(db, req.actor)));
+  app.post("/api/v1/stock-owners", run(ownerCreate, "configure", () => "stock-owner-create", (t, a, p) => createStockOwner(t, a, p)));
+  app.get("/api/v1/inventory/owners", async (req, res) => res.json({ owners: await listStockOwners(db, req.actor) }));
+  app.post("/api/v1/inventory/owners", run(ownerCreate, "configure", () => "owner-create", (t, a, p) => createStockOwner(t, a, p)));
+  app.get("/api/v1/inventory/balances", async (req, res) => res.json(await getInventoryBalances(db, req.actor, {
+    productId: typeof req.query.productId === "string" ? req.query.productId : undefined,
+    locationId: typeof req.query.locationId === "string" ? req.query.locationId : undefined,
+    ownerId: typeof req.query.ownerId === "string" ? req.query.ownerId : undefined,
+  })));
+  app.get("/api/v1/inventory/ledger", async (req, res) => res.json(await getInventoryLedger(db, req.actor, {
+    productId: typeof req.query.productId === "string" ? req.query.productId : undefined,
+    locationId: typeof req.query.locationId === "string" ? req.query.locationId : undefined,
+    ownerId: typeof req.query.ownerId === "string" ? req.query.ownerId : undefined,
+    limit: req.query.limit ? Number(req.query.limit) : undefined,
+  })));
+  app.post("/api/v1/inventory/adjust", run(inventoryAdjust, "adjust", () => "inventory-adjust", (t, a, p) => adjustInventory(t, a, p)));
+  app.post("/api/v1/inventory/move/:id", run(inventoryMove, "adjust", (r) => "inventory-move:" + r.params.id, (t, a, p, r) => moveInventory(t, a, String(r.params.id), p)));
+  app.post("/api/v1/inventory/reserve", run(inventoryReserve, "prepare", () => "inventory-reserve", (t, a, p) => reserveInventory(t, a, p)));
+  app.post("/api/v1/inventory/release", run(inventoryRelease, "prepare", () => "inventory-release", (t, a, p) => releaseInventory(t, a, p)));
+  app.get("/api/v1/products/:id/conversions", async (req, res) => res.json(await listUnitConversions(db, req.actor, String(req.params.id))));
+  app.post("/api/v1/products/:id/conversions", run(unitConversionCreate, "configure", (r) => "unit-conversion:" + r.params.id, (t, a, p, r) => createUnitConversion(t, a, String(r.params.id), p)));
+
+  // --- P1 Multi-line Purchase Orders ---
+  app.get("/api/v1/purchase-orders", async (req, res) => res.json(await listPurchaseOrders(db, req.actor)));
+  app.get("/api/v1/purchase-orders/:id", async (req, res) => res.json(await getPurchaseOrder(db, req.actor, String(req.params.id))));
+  app.post("/api/v1/purchase-orders", run(purchaseOrderCreate, "receive", () => "po-create", (t, a, p) => createPurchaseOrder(t, a, p)));
+  app.post("/api/v1/purchase-orders/:id/receive", run(purchaseOrderReceive, "receive", (r) => "po-receive:" + r.params.id, (t, a, p, r) => receivePurchaseOrderLine(t, a, String(r.params.id), p)));
+  app.post("/api/v1/purchase-orders/:id/cancel", run(purchaseOrderCancel, "adjust", (r) => "po-cancel:" + r.params.id, (t, a, p, r) => cancelPurchaseOrder(t, a, String(r.params.id), p)));
+
+  // --- P1 Inbound Discrepancies ---
+  app.get("/api/v1/discrepancies", async (req, res) => res.json(await listDiscrepancies(db, req.actor, typeof req.query.status === "string" ? req.query.status : undefined)));
+  app.get("/api/v1/discrepancies/:id", async (req, res) => res.json(await owned(db, "inbound_discrepancies", String(req.params.id), req.actor)));
+  app.post("/api/v1/discrepancies", run(discrepancyReport, "receive", () => "discrepancy-report", (t, a, p) => reportDiscrepancy(t, a, p)));
+  app.post("/api/v1/discrepancies/:id/review", run(discrepancyReview, "adjust", (r) => "discrepancy-review:" + r.params.id, (t, a, p, r) => reviewDiscrepancy(t, a, String(r.params.id), p)));
+
+  // --- P1 Supplier Returns ---
+  app.get("/api/v1/supplier-returns", async (req, res) => res.json(await listSupplierReturns(db, req.actor)));
+  app.post("/api/v1/supplier-returns", run(supplierReturnCreate, "adjust", () => "supplier-return-create", (t, a, p) => createSupplierReturn(t, a, p)));
+  app.post("/api/v1/supplier-returns/:id/authorize", run(supplierReturnAuthorize, "adjust", (r) => "supplier-return-auth:" + r.params.id, (t, a, p, r) => authorizeSupplierReturn(t, a, String(r.params.id), p)));
+  app.post("/api/v1/supplier-returns/:id/dispatch", run(supplierReturnDispatch, "dispatch", (r) => "supplier-return-disp:" + r.params.id, (t, a, p, r) => dispatchSupplierReturn(t, a, String(r.params.id), p)));
+
+  // --- P1 Putaway & Replenishment Tasks ---
+  app.get("/api/v1/tasks", async (req, res) => res.json(await listTasks(db, req.actor, {
+    kind: typeof req.query.kind === "string" ? req.query.kind : undefined,
+    status: typeof req.query.status === "string" ? req.query.status : undefined,
+  })));
+  app.post("/api/v1/tasks/putaway", run(putawayTaskCreate, "receive", () => "task-putaway-create", (t, a, p) => createPutawayTask(t, a, p)));
+  app.post("/api/v1/tasks/:id/assign", run(taskAssign, "prepare", (r) => "task-assign:" + r.params.id, (t, a, p, r) => assignTask(t, a, String(r.params.id), p)));
+  app.post("/api/v1/tasks/:id/complete", run(taskComplete, "prepare", (r) => "task-complete:" + r.params.id, (t, a, p, r) => completeTask(t, a, String(r.params.id), p)));
+  app.post("/api/v1/tasks/:id/cancel", run(taskCancel, "prepare", (r) => "task-cancel:" + r.params.id, (t, a, p, r) => cancelTask(t, a, String(r.params.id), p)));
+  app.get("/api/v1/replenishment-policies", async (req, res) => res.json(await listReplenishmentPolicies(db, req.actor)));
+  app.post("/api/v1/replenishment-policies", run(replenishmentPolicySet, "configure", () => "replenishment-policy-set", (t, a, p) => setReplenishmentPolicy(t, a, p)));
+  app.post("/api/v1/replenishment/trigger", run(replenishmentTrigger, "prepare", () => "replenishment-trigger", (t, a, p) => triggerReplenishment(t, a, p)));
+
+  // --- P1 Inter-Warehouse Transfers ---
+  app.get("/api/v1/transfers", async (req, res) => res.json(await listTransferOrders(db, req.actor)));
+  app.get("/api/v1/transfers/:id", async (req, res) => res.json(await getTransferOrder(db, req.actor, String(req.params.id))));
+  app.post("/api/v1/transfers", run(transferOrderCreate, "dispatch", () => "transfer-create", (t, a, p) => createTransferOrder(t, a, p)));
+  app.post("/api/v1/transfers/:id/dispatch", run(transferOrderDispatch, "dispatch", (r) => "transfer-dispatch:" + r.params.id, (t, a, p, r) => dispatchTransferOrder(t, a, String(r.params.id), p)));
+  app.post("/api/v1/transfers/:id/receive", run(transferOrderReceive, "receive", (r) => "transfer-receive:" + r.params.id, (t, a, p, r) => receiveTransferOrder(t, a, String(r.params.id), p)));
+  app.post("/api/v1/transfers/:id/cancel", run(transferOrderCancel, "adjust", (r) => "transfer-cancel:" + r.params.id, (t, a, p, r) => cancelTransferOrder(t, a, String(r.params.id), p)));
+
+  // --- P1 Multi-Entity CSV Imports ---
+  app.get("/api/v1/csv-imports", async (req, res) => res.json(await listCsvImports(db, req.actor, typeof req.query.entityType === "string" ? req.query.entityType : undefined)));
+  app.get("/api/v1/csv-imports/:id", async (req, res) => res.json(await reviewCsvImport(db, req.actor, String(req.params.id))));
+  app.post("/api/v1/csv-imports/preview", run(csvImportPreview, "configure", () => "csv-import-preview", (t, a, p) => previewCsvImport(t, a, p)));
+  app.post("/api/v1/csv-imports/:id/commit", run(csvImportCommit, "configure", (r) => "csv-import-commit:" + r.params.id, (t, a, p, r) => commitCsvImport(t, a, String(r.params.id), p)));
+  app.get("/api/v1/csv-imports/:id/errors.csv", async (req, res) => {
+    const csv = await exportCsvImportErrors(db, req.actor, String(req.params.id));
+    res.type("text/csv").setHeader("Content-Disposition", 'attachment; filename="import-errors.csv"');
+    res.send(csv);
+  });
+
+  // --- P1 Guided Resumable Onboarding & Readiness Review ---
+  app.get("/api/v1/onboarding", async (req, res) => res.json(await getWarehouseOnboarding(db, req.actor)));
+  app.post("/api/v1/onboarding/step", run(onboardingStepSave, "configure", () => "onboarding-step", (t, a, p) => saveOnboardingStep(t, a, p)));
+  app.post("/api/v1/onboarding/review", run(onboardingReviewComplete, "configure", () => "onboarding-review", (t, a, p) => completeOnboardingReview(t, a, p)));
+
   app.get('/api/v1/ai/status',async(req,res)=>{authorize(req.actor,'receive');res.json(await ocrStatus())});
   app.post('/api/v1/documents/:id/extract',run(schemas.extractionRequest,'receive',r=>'extract:'+r.params.id,async(t,a,p,r)=>{
     const doc=await owned(t,'documents',String(r.params.id),a);requireRule(['image/jpeg','image/png','image/webp'].includes(doc.mime),'OCR_TYPE','Select a JPEG, PNG or WebP image',422);

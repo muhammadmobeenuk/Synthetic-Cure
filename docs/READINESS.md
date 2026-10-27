@@ -12,9 +12,9 @@ The candidate is not production-ready. The audit matrix is evidence/PLATFORM-GAP
 | Browser photo | See evidence/PLATFORM-001.md | Representative physical phone/camera |
 | Phone/tablet journeys | See evidence/PLATFORM-001.md | Physical-device testing and broader journeys |
 | Clean source archive setup/build | See evidence/PLATFORM-001.md | Re-run final artifact if inputs change |
-| Staff lifecycle, membership and warehouse access | NOT RUN / incomplete | Implement and object-access test |
-| Full onboarding/import/opening reconciliation | NOT RUN / incomplete | Atomic validated workflows |
-| Inventory without containers, serial/weight ledger | NOT RUN / incomplete | Typed balances/ledger design and tests |
+| Staff lifecycle, membership and warehouse access | PASSED on PGlite/HTTP | Native authorization/concurrency tests |
+| Full onboarding/import/opening reconciliation | PASSED on PGlite/HTTP | Native multi-entity import rehearsal |
+| Inventory without containers, serial/weight ledger | PASSED on PGlite/HTTP | Native ledger concurrency and high-volume checks |
 | Automatic offline sync, OCR | NOT RUN / unimplemented | Real adapters, visible recovery states |
 | Real operational policies and specialist rules | Unconfirmed | Warehouse approval and verified source inputs |
 
@@ -38,4 +38,22 @@ Addresses core P0 trust, data integrity, and release gate gaps:
 
 Verification: Full test suite passed (114 tests: 112 passed, 0 failed, 2 skipped); strict TypeScript check passed (`tsc --noEmit`, 0 errors); production build passed (`vite build`).
 Limits: Native PostgreSQL independent-client concurrency, native migrations, and native restore remain BLOCKED pending provision of two disposable database URLs (`TEST_DATABASE_URL` and `TEST_RESTORE_DATABASE_URL`). Physical mobile devices, physical cameras, and Bluetooth ring scanners remain unverified. Production readiness is not claimed.
+
+## P1 inventory and inbound foundation update
+Implements and verifies all 11 core P1 functional areas:
+1. **Unified quantity/container inventory:** Added coherent ledger (`inventory_ledger`) and balance tracking (`inventory_balances`) for loose and measured bulk goods without artificial boxes. Formally defines and tracks physical `on_hand`, `reserved`, `available`, `picked`, `in_transit`, `held`, and `dispatched`. Verified invariant: `available = on_hand - reserved - picked - held`; reservations do not create stock.
+2. **Stock ownership:** Added `stock_owners` table with endpoints (`/api/v1/stock-owners` and `/api/v1/inventory/owners`). Distinct stock ownership is enforced with owner-specific balances and authorizations before third-party storage claims.
+3. **Units, pack definitions and variable weight:** Added `product_unit_conversions` with transaction snapshots and verified conversion lookup (`convertProductQuantity`). Contents records track independent measured `catch_weight` and `package_count`. Unknown conversions return null and do not create synthetic totals.
+4. **Multi-line purchase orders/expected inbound:** Added `purchase_orders` and `purchase_order_lines` with supplier references, expected dates, quantities, line status, partial arrivals, and remaining balances. Additive migration 016 preserves single-product expected receipts.
+5. **Unexpected, over, short and damaged delivery:** Added `inbound_discrepancies` with explicit recording and authorized review/approval (`accept_hold`, `reject_return`, `adjust_po`) without silently altering PO lines.
+6. **Supplier return:** Added `supplier_returns` separate from customer returns; identifies supplier/receipt, held goods, authorized review, outbound custody tracking, and reconciliation without releasing held goods to available stock.
+7. **Putaway tasks:** Added `warehouse_tasks` with scan/ID confirmation, source and destination, assignment, physical placement, and verified restriction/capacity compatibility.
+8. **Replenishment:** Added `location_replenishment_policies` with configurable min/target per picking location, reserve-to-pick task generation, duplicate-open-task prevention, and hold/reservation checks.
+9. **Inter-warehouse transfer:** Added `transfer_orders` and `transfer_lines`. Dispatch from source creates `in_transit` inventory; destination receipt removes transit and creates destination stock; supports partial/damaged receipts; never shows inventory available in both warehouses simultaneously.
+10. **Opening inventory and imports:** Multi-entity CSV import pipelines (`csv_imports`, `csv_import_errors`) for customers, suppliers, locations, orders, expected receipts, and opening stock with dry-run/preview, error reports, and separate cut-over date reconciliation for opening stock.
+11. **Onboarding and configuration:** Added `warehouse_onboarding` and `policy_snapshots` supporting guided, resumable warehouse setup (goods profiles, staff, schedules, label preferences, imports, opening balances, readiness review) and immutable policy snapshots at consequential transactions.
+
+Verification: P1 test suite PASSED (`tests/p1-inventory-inbound.test.ts`, 11/11 tests, 100% pass rate); full test suite PASSED (`npm test`, 125 tests: 123 passed, 0 failed, 2 skipped: 1 native PostgreSQL skipped, 1 tesseract skipped); strict TypeScript check PASSED (`tsc --noEmit`, 0 errors); production bundle build PASSED (`vite build` in 511ms); all verify checks clean (`npm run verify`).
+Limits: Native PostgreSQL independent-client concurrency, native migrations, and native restore remain BLOCKED pending provision of two disposable database URLs (`TEST_DATABASE_URL` and `TEST_RESTORE_DATABASE_URL`). Physical warehouse handheld terminals, physical cameras, and Bluetooth ring scanners remain unverified. Production readiness is not claimed.
+
 

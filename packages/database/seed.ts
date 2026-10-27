@@ -25,6 +25,14 @@ export async function seed(db: DB) {
       prod ? (process.env.COMPANY_NAME || "Company · setup required") : "Synthetic Cure · Synthetic demo",
       !prod,
     ]);
+    const hasOwners = (await t.query("SELECT 1 FROM information_schema.tables WHERE table_name='stock_owners' AND table_schema='public'")).rows.length > 0;
+    if (hasOwners) {
+      await t.query("INSERT INTO stock_owners(id, org_id, code, name) VALUES($1, $2, 'DEFAULT', $3) ON CONFLICT DO NOTHING", [
+        org + ":default_owner",
+        org,
+        "Primary Owner · " + (prod ? (process.env.COMPANY_NAME || "Company") : "Synthetic Cure"),
+      ]);
+    }
     await t.query(
       "INSERT INTO users(id,org_id,email,name,password_hash,role) VALUES($1,$2,$3,$4,$5,$6)",
       [

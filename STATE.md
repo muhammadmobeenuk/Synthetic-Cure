@@ -1,4 +1,22 @@
-# Current candidate · PLATFORM-004
+# Current candidate · P1 inventory and inbound foundation
+Delivers the complete P1 inventory and inbound foundation across all 11 core domains:
+- Unified quantity/container inventory: Added `inventory_ledger` and `inventory_balances` for loose/measured bulk goods without artificial boxes. Defines and tracks physical `on_hand`, `reserved`, `available`, `picked`, `in_transit`, `held`, and `dispatched`. Verified invariant: `available = on_hand - reserved - picked - held`; reservations do not create stock.
+- Stock ownership: Added `stock_owners` table and endpoints (`GET /api/v1/stock-owners`, `POST /api/v1/stock-owners`, and alias `GET /api/v1/inventory/owners`). Enforces distinct stock ownership with owner-specific balances and authorization before 3PL storage claims.
+- Units, pack definitions & variable weight: Added `product_unit_conversions` with transaction snapshots and product-specific verified conversion lookups (`convertProductQuantity`). Preserved independent measured `catch_weight` and `package_count` on contents. Invariant verified: unknown conversion is not zero and does not create synthetic item or weight totals.
+- Multi-line purchase orders / expected inbound: Added `purchase_orders` and `purchase_order_lines` with supplier references, expected dates, quantities, status tracking, partial line arrivals, and remaining balances. Additive schema migration 016 preserves existing single-product expectations.
+- Unexpected, over, short and damaged delivery: Added `inbound_discrepancies` with explicit recording and authorized review/disposition (`accept_hold`, `reject_return`, `adjust_po`) without silently mutating PO expectations.
+- Supplier return: Added `supplier_returns` separate from customer returns; identifies supplier/receipt, held goods, authorized review, outbound custody tracking, and reconciliation. Never implicitly releases held goods back to available stock.
+- Putaway tasks: Added `warehouse_tasks` with scan/ID confirmation, source/destination, assignment, physical placement, and verified restriction/capacity compatibility.
+- Replenishment: Added `location_replenishment_policies` with configurable min/target per picking location, reserve-to-pick task generation, duplicate-open-task prevention, and hold/reservation checks.
+- Inter-warehouse transfer: Added `transfer_orders` and `transfer_lines`. Dispatch from source creates `in_transit` inventory; destination receipt removes transit and creates destination stock; supports partial/damaged receipts; never shows inventory available in both warehouses simultaneously.
+- Opening inventory and imports: Added `csv_imports` and `csv_import_errors` multi-entity import pipelines for customers, suppliers, locations, orders, expected receipts, and opening stock with dry-run preview, error reports, and separate cut-over date reconciliation for opening stock.
+- Onboarding & configuration: Added `warehouse_onboarding` and `policy_snapshots` supporting guided, resumable warehouse setup (goods profiles, staff, schedules, label preferences, imports, opening balances, readiness review) and immutable policy snapshots at consequential transactions.
+
+Verification: P1 test suite PASSED (`tests/p1-inventory-inbound.test.ts`, 11/11 tests, 100% pass rate); full test suite PASSED (`npm test`, 125 tests: 123 passed, 0 failed, 2 skipped: 1 native PostgreSQL skipped, 1 tesseract skipped); strict TypeScript check PASSED (`tsc --noEmit`, 0 errors); production bundle build PASSED (`vite build` in 511ms); all verify checks clean (`npm run verify`).
+
+Limits: Native PostgreSQL independent-client concurrency, native migrations, and native restore remain BLOCKED pending provision of two disposable database URLs (`TEST_DATABASE_URL` and `TEST_RESTORE_DATABASE_URL`). Physical warehouse handheld terminals, physical cameras, and Bluetooth ring scanners remain unverified. Production readiness is not claimed.
+
+## Previous candidate · PLATFORM-004
 
 Addresses P0 platform trust, worker reliability, scoped pagination, staff provisioning lifecycle, and authoritative deployment readiness:
 - Worker reliability: Eliminates long-running transactions (up to 30s) during OCR and external tasks. Implements leased job claims (`FOR UPDATE SKIP LOCKED`), out-of-transaction bounded execution with streamed 500-record batch inventory export using deterministic `(code, id)` pagination, crash recovery reclaiming expired leases, dead-letter tracking, and transactional finalize with permission re-check.

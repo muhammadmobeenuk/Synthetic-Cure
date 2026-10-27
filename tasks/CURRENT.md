@@ -1,4 +1,23 @@
-# Active slice · P0 trust, data integrity & release gates remediation (PLATFORM-004)
+# Active slice · P1 inventory and inbound foundation
+
+Acceptance: Deliver unified quantity/container inventory, stock ownership, unit conversions & variable weight, multi-line purchase orders/expected inbound, delivery discrepancies, supplier returns, putaway tasks, replenishment, inter-warehouse transfers, multi-entity opening inventory & imports, guided warehouse onboarding & configuration:
+1. Unified quantity/container inventory: Coherent ledger (`inventory_ledger`) & balances (`inventory_balances`) for loose/measured bulk goods without artificial boxes; tracks physical `on_hand`, `reserved`, `available`, `picked`, `in_transit`, `held`, and `dispatched`. Invariant: `available = on_hand - reserved - picked - held`; reservations do not create stock.
+2. Stock ownership: Explicit stock owners (`stock_owners`) distinct from company, ordering customer, and receiver; owner-specific balances and authorizations before 3PL storage claims.
+3. Units, pack definitions & variable weight: Product-specific verified conversions (`product_unit_conversions`) with transaction snapshots; partial cases and independent measured catch weight (`catch_weight`) and package count (`package_count`). Invariant: Unknown conversion is not zero and must not create item or weight totals.
+4. Multi-line purchase orders / expected inbound: Multi-line POs (`purchase_orders`, `purchase_order_lines`) with supplier reference, expected dates/quantities, partial arrivals, remaining balances, and additive compatibility preserving single-product expected receipts.
+5. Unexpected, over, short and damaged delivery: Explicit discrepancy records (`inbound_discrepancies`) and authorized review/approval (`accept_hold`, `reject_return`, `adjust_po`) without silently altering POs. Records evidence, counts, and disposition.
+6. Supplier return: Separate from customer returns: identify supplier/receipt, held goods, quantity, authorization, outbound custody, and reconciliation without releasing held goods to available stock implicitly.
+7. Putaway tasks: `warehouse_tasks` with scan/ID confirmation, source and destination, assignment, physical placement, and verified restriction/capacity compatibility.
+8. Replenishment: Configurable min/target per picking location (`location_replenishment_policies`), reserve-to-pick task generation, duplicate-open-task prevention, hold/reservation checks, and confirmed movement.
+9. Inter-warehouse transfer: Explicit transfer orders (`transfer_orders`, `transfer_lines`); dispatch from source creates `in_transit` inventory; destination receipt removes transit and creates destination stock; support partial/damaged receipts. Never show one quantity available in both warehouses simultaneously.
+10. Opening inventory and imports: Multi-entity CSV import pipelines (`csv_imports`, `csv_import_errors`) for customers, suppliers, locations, orders, expected receipts, and opening stock with dry-run/preview, error reports, and separate cut-over date reconciliation for opening stock.
+11. Onboarding and configuration: Guided, resumable warehouse setup (`warehouse_onboarding`, `policy_snapshots`) covering goods profiles, staff, schedules, label preferences, imports, opening balances, readiness review, and policy snapshots.
+
+Failure/recovery: preserve all domain invariants—server-derived actors and provenance, zero stock changes from OCR, stable box identity, at most one pallet, standalone vs inherited pallet location, verified conversions only, transactional idempotency (`clientOperationId`), 409 on stale versions, append-only audit events, returns held, no stock invented.
+
+Verification: P1 test suite (`tests/p1-inventory-inbound.test.ts`, 11/11 passed covering all 11 user requirements); full test suite (`npm test`, 125 tests: 123 passed, 0 failed, 2 skipped); TypeScript check (`tsc --noEmit`, zero errors); production build (`vite build` in 511ms); all verify checks clean (`npm run verify`). Native PostgreSQL independent-client concurrency, native migrations, and native restore remain BLOCKED pending provision of two disposable database URLs. Physical devices remain unverified.
+
+## Previous slice · P0 trust, data integrity & release gates remediation (PLATFORM-004)
 
 Acceptance: resolve core P0 platform gaps before real-stock pilot:
 1. Worker reliability: Eliminate long-running database transactions (up to 30s) during OCR and external tasks. Implement leased job claims (`FOR UPDATE SKIP LOCKED`), out-of-transaction bounded processing with streamed batch inventory exports (500 records/page via deterministic `(code, id)` pagination), crash recovery reclaiming expired leases, retry/dead-letter tracking, and transactional finalize with permission re-check.
