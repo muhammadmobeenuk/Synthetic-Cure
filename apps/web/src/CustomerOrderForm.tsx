@@ -13,6 +13,7 @@ export function CustomerOrderForm({
   customers,
   destinations,
   products,
+  availableStock,
   onSaved,
   onClose,
 }: {
@@ -20,6 +21,7 @@ export function CustomerOrderForm({
   customers: RecordRow[];
   destinations: RecordRow[];
   products: RecordRow[];
+  availableStock?: Record<string, string>;
   onSaved: () => Promise<void>;
   onClose: () => void;
 }) {
@@ -96,12 +98,22 @@ export function CustomerOrderForm({
   }));
 
   // Product options
-  const productOptions = products.map((p) => ({
-    value: p.id,
-    label: `${p.sku} · ${p.name}`,
-    sublabel: `${p.name_zh ? p.name_zh + " · " : ""}Base unit: ${p.unit}`,
-    badge: p.profile,
-  }));
+  const productOptions = products.map((p) => {
+    const stock = availableStock ? availableStock[p.id] : undefined;
+    return {
+      value: p.id,
+      label: `${p.sku} · ${p.name}`,
+      sublabel: `${p.name_zh ? p.name_zh + " · " : ""}Base unit: ${p.unit}${
+        stock !== undefined ? ` · In Stock: ${stock} ${p.unit}` : ""
+      }`,
+      badge:
+        stock !== undefined
+          ? Number(stock) > 0
+            ? `${stock} ${p.unit} in stock`
+            : "Out of stock"
+          : p.profile,
+    };
+  });
 
   async function submit() {
     setError("");
@@ -281,14 +293,29 @@ export function CustomerOrderForm({
                     marginBottom: "12px",
                   }}
                 >
-                  <SmartCombobox
-                    label={`Product · line ${i + 1}`}
-                    placeholder="Search SKU or product name…"
-                    value={line.productId}
-                    required
-                    options={productOptions}
-                    onChange={(val) => update(i, "productId", val)}
-                  />
+                  <div>
+                    <SmartCombobox
+                      label={`Product · line ${i + 1}`}
+                      placeholder="Search SKU or product name…"
+                      value={line.productId}
+                      required
+                      options={productOptions}
+                      onChange={(val) => update(i, "productId", val)}
+                    />
+                    {product && availableStock && (
+                      <div style={{ marginTop: "4px", fontSize: "11px" }}>
+                        {Number(availableStock[product.id] || 0) > 0 ? (
+                          <span style={{ color: "#087a55", fontWeight: 600 }}>
+                            ✓ {availableStock[product.id]} {product.unit} available in warehouse
+                          </span>
+                        ) : (
+                          <span style={{ color: "#d97706", fontWeight: 600 }}>
+                            ⚠ 0 {product.unit} unallocated (inbound / receipt needed)
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
 
                   <SmartQuantityInput
                     label={`Requested quantity`}

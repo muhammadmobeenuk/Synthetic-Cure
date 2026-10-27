@@ -591,6 +591,16 @@ function App() {
         ) &&
         !rows("allocations").some((a) => a.box_id === c.box_id),
     );
+    const sortedSources = [...sources].sort((a, b) => {
+      const lotA = a.lot_id ? rows("lots").find((l) => l.id === a.lot_id) : null;
+      const lotB = b.lot_id ? rows("lots").find((l) => l.id === b.lot_id) : null;
+      const expA = lotA?.expires_on;
+      const expB = lotB?.expires_on;
+      if (expA && expB) return expA.localeCompare(expB);
+      if (expA) return -1;
+      if (expB) return 1;
+      return 0;
+    });
     const lines = rows("orderLines").filter((l) => l.order_id === order.id);
     const targets = rows("allocations").filter(
       (a) =>
@@ -614,21 +624,36 @@ function App() {
         },
         {
           key: "contentsId",
-          label: "Verified source box contents",
+          label: "Verified source box contents (FEFO prioritized)",
           required: true,
-          options: sources
+          options: sortedSources
             .filter((c) => lines.some((l) => l.product_id === c.product_id))
-            .map((c) => ({
-              value: c.id,
-              label:
-                rows("boxes").find((b) => b.id === c.box_id)?.code +
-                " · " +
-                c.product_name +
-                " · " +
-                fmt(c.quantity) +
-                " " +
-                c.unit,
-            })),
+            .map((c) => {
+              const lot = c.lot_id ? rows("lots").find((l) => l.id === c.lot_id) : null;
+              const box = rows("boxes").find((b) => b.id === c.box_id);
+              const exp = lot?.expires_on;
+              return {
+                value: c.id,
+                label:
+                  (box?.code || "Box") +
+                  " · " +
+                  c.product_name +
+                  " · " +
+                  fmt(c.quantity) +
+                  " " +
+                  c.unit,
+                sublabel:
+                  "Location: " +
+                  (box?.location_code || "Unknown") +
+                  (exp ? " · Exp: " + exp : "") +
+                  (lot ? " · Batch: " + lot.reference : ""),
+                badge: exp
+                  ? "FEFO Exp: " + exp.slice(5)
+                  : lot
+                    ? "Batch " + lot.reference
+                    : undefined,
+              };
+            }),
         },
         {
           key: "quantity",
@@ -769,11 +794,20 @@ function App() {
   }
   function allocate(order: Row) {
     const lines = rows("orderLines").filter((l) => l.order_id === order.id);
-    const available = rows("boxes").filter(
-      (b) =>
-        b.status === "confirmed" &&
-        !rows("allocations").some((a) => a.box_id === b.id),
-    );
+    const available = rows("boxes")
+      .filter(
+        (b) =>
+          b.status === "confirmed" &&
+          !rows("allocations").some((a) => a.box_id === b.id),
+      )
+      .sort((a, b) => {
+        const expA = boxExpiry(a.id);
+        const expB = boxExpiry(b.id);
+        if (expA && expB) return expA.localeCompare(expB);
+        if (expA) return -1;
+        if (expB) return 1;
+        return a.code.localeCompare(b.code);
+      });
     open({
       title: "Allocate a physical box",
       contextId: order.id,
@@ -791,12 +825,24 @@ function App() {
         },
         {
           key: "boxId",
-          label: "Available box",
+          label: "Available box (FEFO prioritized)",
           required: true,
-          options: available.map((b) => ({
-            value: b.id,
-            label: b.code + " · " + contentsText(b.id),
-          })),
+          options: available.map((b) => {
+            const exp = boxExpiry(b.id);
+            return {
+              value: b.id,
+              label: b.code + " · " + contentsText(b.id),
+              sublabel:
+                "Location: " +
+                (b.location_code || "Unknown") +
+                (exp ? " · Exp: " + exp : ""),
+              badge: exp
+                ? "FEFO Exp: " + exp.slice(5)
+                : b.pallet_code
+                  ? "Pallet " + b.pallet_code
+                  : undefined,
+            };
+          }),
         },
         {
           key: "quantity",
@@ -919,8 +965,8 @@ function App() {
         label: l.box_code + " · delivered now (" + l.unit + ")",
         type: "number",
         required: true,
-        value: "0",
-        hint: "Outstanding: " + fmt(remaining(l)) + " " + l.unit,
+        value: String(remaining(l)),
+        hint: "Remaining on shipment: " + fmt(remaining(l)) + " " + l.unit,
       },
       {
         key: "r_" + l.id,
@@ -960,6 +1006,21 @@ function App() {
           op,
         ),
     });
+  }
+  function boxExpiry(boxId: string): string | null {
+    const ct = rows("contents").filter((c) => c.box_id === boxId);
+    let earliest: string | null = null;
+    for (const c of ct) {
+      if (c.lot_id) {
+        const lot = rows("lots").find((l) => l.id === c.lot_id);
+        if (lot?.expires_on) {
+          if (!earliest || lot.expires_on < earliest) {
+            earliest = lot.expires_on;
+          }
+        }
+      }
+    }
+    return earliest;
   }
   function contentsText(boxId: string) {
     if (rows("boxes").find((b) => b.id === boxId)?.status === "empty")
@@ -1777,7 +1838,39 @@ function App() {
               )}
               {page === "orders" && (
                 <div className="stack">
-                  {orderForm && can("order") && <CustomerOrderForm key={draftScope(user as any)} actor={user} customers={rows("customers")} destinations={rows("destinations")} products={rows("products")} onSaved={refresh} onClose={()=>setOrderForm(false)}/>}
+                  {orderForm && can("order") && (
+                    <CustomerOrderForm
+                      key={draftScope(user as any)}
+                      actor={user}
+                      customers={rows("customers")}
+                      destinations={rows("destinations")}
+                      products={rows("products")}
+                      availableStock={Object.fromEntries(
+                        rows("products").map((p) => {
+                          const availableContents = rows("contents").filter(
+                            (c) =>
+                              c.product_id === p.id &&
+                              c.verified &&
+                              c.quantity !== null &&
+                              rows("boxes").some(
+                                (b) =>
+                                  b.id === c.box_id &&
+                                  b.condition === "good" &&
+                                  ["confirmed", "unconfirmed"].includes(b.status),
+                              ) &&
+                              !rows("allocations").some((a) => a.box_id === c.box_id),
+                          );
+                          const total = availableContents.reduce(
+                            (sum, c) => sum.plus(c.quantity),
+                            new Decimal(0),
+                          );
+                          return [p.id, total.toFixed()];
+                        }),
+                      )}
+                      onSaved={refresh}
+                      onClose={() => setOrderForm(false)}
+                    />
+                  )}
                   {rows("orders").length > 0 && <div className="orders-workspace">
                     <section className="panel orders-list-panel" aria-label="Orders">
                       <div className="orders-list-header"><div><h2>Orders</h2><p>Choose an order to see its details and actions.</p></div><span className="order-count">{rows("orders").length} loaded</span></div>
