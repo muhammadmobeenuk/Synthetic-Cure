@@ -40,6 +40,9 @@ export const backupTables = [
   "product_import_items",
   "pallet_groups",
   "pallet_group_memberships",
+  "suppliers",
+  "expected_receipts",
+  "expected_receipt_boxes",
 ];
 // Logical backups include domain/configuration records, not expiring sessions.
 export async function snapshot(db: DB) {
@@ -48,22 +51,25 @@ export async function snapshot(db: DB) {
     const data: Record<string, any[]> = {};
     for (const table of backupTables)
       data[table] = (await t.query("SELECT * FROM " + table)).rows;
-    return { format: "jadesun-v5", createdAt: new Date().toISOString(), tables: data };
+    return { format: "jadesun-v6", createdAt: new Date().toISOString(), tables: data };
   });
 }
 function validateBackup(backup: any) {
-  if (!backup || !["jadesun-v1", "jadesun-v2", "jadesun-v3", "jadesun-v4", "jadesun-v5"].includes(backup.format) || !backup.tables)
+  if (!backup || !["jadesun-v1", "jadesun-v2", "jadesun-v3", "jadesun-v4", "jadesun-v5", "jadesun-v6"].includes(backup.format) || !backup.tables)
     throw new Error("Unsupported backup format");
   const groupTables=['pallet_groups','pallet_group_memberships'];
+  const inboundTables=['suppliers','expected_receipts','expected_receipt_boxes'];
+  if(inboundTables.some(t=>backup.tables[t]!==undefined)&&!inboundTables.every(t=>Array.isArray(backup.tables[t])))throw new Error('Incomplete inbound backup tables');
   if(groupTables.some(t=>backup.tables[t]!==undefined)&&!groupTables.every(t=>Array.isArray(backup.tables[t])))throw new Error('Incomplete pallet group backup tables');
   const importTables=['product_imports','product_import_items'];
   if(importTables.some(t=>backup.tables[t]!==undefined)&&!importTables.every(t=>Array.isArray(backup.tables[t])))throw new Error('Incomplete import backup tables');
   const newTables=["warehouses","company_memberships","warehouse_grants"];
   if(newTables.some(t=>backup.tables[t]!==undefined)&&!newTables.every(t=>Array.isArray(backup.tables[t])))throw new Error("Incomplete access backup tables");
   for (const table of backupTables) {
-    if(backup.format!=='jadesun-v5' && groupTables.includes(table) && backup.tables[table]===undefined)continue;
-    if(!['jadesun-v4','jadesun-v5'].includes(backup.format) && importTables.includes(table) && backup.tables[table]===undefined)continue;
-    if(!['jadesun-v3','jadesun-v4','jadesun-v5'].includes(backup.format) && newTables.includes(table) && backup.tables[table]===undefined)continue;
+    if(backup.format!=='jadesun-v6' && inboundTables.includes(table) && backup.tables[table]===undefined)continue;
+    if(!['jadesun-v5','jadesun-v6'].includes(backup.format) && groupTables.includes(table) && backup.tables[table]===undefined)continue;
+    if(!['jadesun-v4','jadesun-v5','jadesun-v6'].includes(backup.format) && importTables.includes(table) && backup.tables[table]===undefined)continue;
+    if(!['jadesun-v3','jadesun-v4','jadesun-v5','jadesun-v6'].includes(backup.format) && newTables.includes(table) && backup.tables[table]===undefined)continue;
     if (backup.format === "jadesun-v1" && ["company_configuration", "company_configuration_revisions"].includes(table) && backup.tables[table] === undefined) continue;
     if (!Array.isArray(backup.tables[table]))
       throw new Error("Missing backup table: " + table);

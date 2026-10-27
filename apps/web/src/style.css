@@ -2750,3 +2750,9 @@ button:focus-visible, a:focus-visible { outline-color: #bc8100; }
 .creator-credit-dark { color:#c0d5d2; border-top:1px solid #24575b; padding:10px 7px 14px; }
 .creator-credit-dark strong { color:#fff; }
 .login-card .creator-credit { margin-top:18px; border-top:1px solid #dce5e4; }
+
+.pallet-detail-panel [hidden] { display: none !important; }
+
+/* Hide scrollbar chrome; all scroll containers remain scrollable. */
+* { scrollbar-width: none; }
+*::-webkit-scrollbar { display: none; }

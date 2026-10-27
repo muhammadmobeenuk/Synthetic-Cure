@@ -2,7 +2,7 @@ import {role as roleSchema} from "../contracts/index.js";
 import type {DB} from '../database/index.js';
 import type {Actor} from './services.js';
 import {requireRule} from './index.js';
-export const warehouseTables=new Set(['pallet_groups','product_imports','locations','pallets','boxes','contents','orders','order_lines','allocations','preparations','preparation_orders','trips','stops','shipments','shipment_lines','documents','issues','counts','count_observations','inventory_events','operations','jobs']);
+export const warehouseTables=new Set(['expected_receipts','pallet_groups','product_imports','locations','pallets','boxes','contents','orders','order_lines','allocations','preparations','preparation_orders','trips','stops','shipments','shipment_lines','documents','issues','counts','count_observations','inventory_events','operations','jobs']);
 export const legacyWarehouse=(org:string)=>org+':legacy';
 export async function contexts(t:DB,userId:string){
   return (await t.query(`SELECT m.org_id,m.role,o.name FROM company_memberships m JOIN organizations o ON o.id=m.org_id JOIN users u ON u.id=m.user_id WHERE m.user_id=$1 AND m.active AND u.active ORDER BY o.name,m.org_id`,[userId])).rows.filter(r=>roleSchema.safeParse(r.role).success);
