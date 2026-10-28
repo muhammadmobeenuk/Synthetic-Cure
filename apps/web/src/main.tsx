@@ -6,6 +6,7 @@ import {ProductImport} from "./ProductImport";
 import {Inbound} from "./Inbound";
 import {Traceability} from "./Traceability";
 import {PortalView} from "./PortalView";
+import {ReportsView} from "./ReportsView";
 import {DraftRecovery} from "./DraftRecovery";
 import {ContextPicker,AccessControl} from "./AccessControl";
 import {SmartCombobox, SmartQuantityInput, useBarcodeScanner, playScanFeedback, SmartSignaturePad, checkEnvironmentalCompatibility, EnvironmentalWarningBadge} from "./SmartInputs";
@@ -61,6 +62,7 @@ import {
   Undo2,
   Box,
   LoaderCircle,
+  Presentation,
 } from "lucide-react";
 import {
   api,
@@ -120,6 +122,7 @@ const nav = [
   ["documents", "Documents & labels", FileText],
   ["settings", "Settings", Settings],
   ["portal", "Client portal", ShieldCheck],
+  ["reports", "Operations deck", Presentation],
 ] as const;
 const statuses: Record<string, string> = {
   unconfirmed: "Unconfirmed",
@@ -3060,6 +3063,9 @@ function App() {
               )}
               {page === "portal" && (
                 <PortalView user={user} />
+              )}
+              {page === "reports" && (
+                <ReportsView user={user} />
               )}
             </>
           )}

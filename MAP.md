@@ -44,3 +44,10 @@ packages/database/migrations/019_client_portal_notifications_adapters.sql: clien
 apps/web/src/PortalView.tsx: integrated client portal, webhooks settings, and carrier/accounting adapter export views.
 tests/p3-portal-notifications-adapters.test.ts: end-to-end domain, multi-tenant isolation, webhook signature, and adapter export test suite for P3 vertical slice.
 evidence/P3-PORTAL-ADAPTERS-001.md: raw test execution transcript and verification report for P3.
+
+packages/contracts/reports.ts: Zod query schemas and data contracts for warehouse operations reports.
+packages/domain/reports.ts: authoritative multi-domain aggregation queries for inbound, picking, stock ownership, quality holds, and floor tasks.
+packages/domain/pptx-generator.ts: pure TypeScript zero-dependency Open Packaging Conventions (OPC) PresentationML generator in Synthetic Cure Dark theme.
+apps/web/src/ReportsView.tsx: warehouse floor operations reporting view with real KPI summary cards, deck preview carousel, and one-click PPTX export.
+tests/p3-powerpoint-reports.test.ts: domain aggregation, presentation generation, multi-tenant isolation, and role authorization test suite.
+evidence/P3-POWERPOINT-REPORTS-001.md: raw verification transcript and evidence for P3 PowerPoint operations report slice.

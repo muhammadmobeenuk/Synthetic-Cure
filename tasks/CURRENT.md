@@ -1,4 +1,42 @@
-# Completed slice · P3 Client Portal, Webhooks/Notifications, and Carrier/Accounting Adapters Foundation
+# Active slice · P3 PowerPoint Operations Report Generator (Warehouse Floor Operations & Shift Briefing)
+
+Acceptance: Deliver data-driven PowerPoint (.pptx) operations deck and metrics export designed specifically for Warehouse Floor Operations & Shift Supervisors using the Synthetic Cure Dark Theme:
+1. Operational metrics query (`getOperationsReportData`): Scoped strictly to active company (`org_id`) and warehouse (`warehouse_id`). Computes authoritative operational aggregates from real database records:
+   - Inbound PO receipts & dock intake: PO counts, lines received, physical boxes checked in, pending/hold receipts, discrepancy breakdown (damaged, short, over, unexpected).
+   - Daily picking & fulfillment throughput: Picking verifications completed, verified quantities vs shortages, supervisor substitutions, totes dispatched.
+   - Inventory integrity & stock-owner balances: On-hand vs reserved vs available vs held breakdown, multi-owner balance distribution, zero invented stock or pricing.
+   - Quality quarantine holds: Active holds by severity (`critical`, `major`, `minor`), quarantined lots/serials/locations, supervisor release dispositions.
+   - Shift task backlog: Open warehouse tasks by priority and assignment status (`open`, `claimed`, `blocked`).
+2. Pure TypeScript PowerPoint (.pptx) presentation generator (`generateOperationsPptx`):
+   - Zero external binary or unsafe runtime dependencies; builds standard Open Packaging Conventions ZIP archive using standard `node:buffer` and `node:zlib.deflateRawSync`.
+   - Generates 6 fully styled slides adhering strictly to the user-selected **Synthetic Cure Dark Theme** (Slate `#0F172A`, Card `#1E293B`, Borders `#334155`, Text `#F8FAFC`, Muted `#94A3B8`, Accent Indigo `#6366F1`, Status Emerald `#10B981`, Amber `#F59E0B`, Rose `#F43F5E`):
+     - Slide 1: Executive Title & Operational Context (Warehouse, Company, Timestamp, Floor Notice).
+     - Slide 2: Inbound PO Receipts & Dock Intake Breakdown.
+     - Slide 3: Daily Picking & Fulfillment Throughput.
+     - Slide 4: Stock-Owner Inventory Distribution & Integrity.
+     - Slide 5: Quality Quarantine Holds & Safety Metrics.
+     - Slide 6: Shift Handover Action Items & Open Floor Exceptions.
+3. Authenticated API endpoints:
+   - `GET /api/v1/reports/operations/data`: Returns structured JSON summary of warehouse operations.
+   - `GET /api/v1/reports/operations/pptx`: Streams the valid `.pptx` presentation with proper binary MIME headers (`application/vnd.openxmlformats-officedocument.presentationml.presentation`).
+4. Actor permissions: Requires supervisor or administrator role (`supervisor` or `administrator`). Operators, drivers, or cross-tenant actors fail closed with 403 `FORBIDDEN`.
+5. User interface: Dedicated Operations Reports panel in `apps/web` with live metric summary cards, date range selectors, and "Download Operations Briefing (.pptx)" action button.
+
+Contracts: `packages/contracts/reports.ts`.
+Domain: `packages/domain/reports.ts`, `packages/domain/pptx-generator.ts`.
+API: `/api/v1/reports/operations/data`, `/api/v1/reports/operations/pptx`.
+UI: `apps/web/src/ReportsView.tsx`, integrated in `apps/web/src/main.tsx`.
+
+Failure/recovery: preserve all domain invariants—server-derived actors and provenance, zero stock changes, zero invented metrics, current pricing unconfirmed, strict multi-tenant isolation, 422 on invalid date bounds, safe stream error handling.
+
+Verification:
+- P3 PowerPoint & Operations Report Test Suite (`tests/p3-powerpoint-reports.test.ts`): PASSED (5/5 tests, 100% pass rate).
+- Full Regression Test Suite (`npm test`): PASSED (150 tests: 148 passed, 0 failed, 2 skipped: 1 native PostgreSQL skipped, 1 tesseract skipped; 39.9s).
+- Strict TypeScript Check (`tsc --noEmit`): PASSED (0 errors).
+- Client Application Bundle Build (`vite build`): PASSED (built in 597ms).
+- Native PostgreSQL Concurrency & Restore: BLOCKED pending provision of disposable databases.
+
+## Previous slice · P3 Client Portal, Webhooks/Notifications, and Carrier/Accounting Adapters Foundation
 
 Acceptance: Deliver authenticated client portal self-service, operational event webhooks, and standardized carrier/accounting export adapters:
 1. Client & stock-owner portal (`client_portal_users`): Scoped client access mapped to specific `customer_id` and/or `stock_owner_id`. Authoritative balances (`GET /api/v1/portal/inventory`), customer order history (`GET /api/v1/portal/orders`), draft customer order placement (`POST /api/v1/portal/orders`), and tracked shipments with delivery notes (`GET /api/v1/portal/shipments`). Invariant: Strict tenant and entity isolation; clients can never view, search, or mutate stock or orders belonging to another customer or stock owner.

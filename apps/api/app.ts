@@ -225,6 +225,14 @@ import {
   carrierManifestBooking,
   accountingExportParams,
 } from "../../packages/contracts/adapters.js";
+import {
+  getOperationsReportData,
+  exportOperationsPptx,
+} from "../../packages/domain/reports.js";
+import {
+  operationsReportQuery,
+} from "../../packages/contracts/reports.js";
+
 
 import {palletGroupList,palletGroupReconciliation,createPalletGroup,changePalletGroup,loadPalletGroupWorkflow} from '../../packages/domain/pallet-groups.js';
 import {errorCsv} from '../../packages/domain/csv.js';
@@ -2573,6 +2581,33 @@ export function createApp(
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Content-Disposition", `attachment; filename="accounting-export-${new Date().toISOString().split("T")[0]}.csv"`);
       res.send(csv);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.get("/api/v1/reports/operations/data", async (req, res, next) => {
+    try {
+      const query = operationsReportQuery.parse(req.query);
+      const data = await getOperationsReportData(db, req.actor, query);
+      res.json({ ok: true, data });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.get("/api/v1/reports/operations/pptx", async (req, res, next) => {
+    try {
+      const query = operationsReportQuery.parse(req.query);
+      const buffer = await exportOperationsPptx(db, req.actor, query);
+      const filename = `synthetic-cure-operations-briefing-${new Date().toISOString().split("T")[0]}.pptx`;
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+      );
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.setHeader("Content-Length", buffer.length);
+      res.end(buffer);
     } catch (e) {
       next(e);
     }

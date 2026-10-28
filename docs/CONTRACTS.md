@@ -70,4 +70,22 @@ GET /api/v1/pallet-groups/:id/reconciliation requires dispatch permission and th
 - `GET /api/v1/adapters/carrier/manifest/:tripId`: Returns structured carrier manifest with vehicle details, pallets, boxes, and destination stops. Query param `format=csv` exports a standardized CSV manifest.
 - `GET /api/v1/adapters/accounting/export`: Requires configure permission. Query params: `startDate`, `endDate`, `format` (`json` | `csv`). Returns accounting ledger and billed transactions with formula-injection neutralization (`=`, `+`, `-`, `@`) and explicit unverified pricing notices.
 
+## P3 PowerPoint Operations Reports & Shift Briefings
+
+- `GET /api/v1/reports/operations/data`: Requires supervisor or administrator role. Query params: `startDate` (ISO string, optional), `endDate` (ISO string, optional), `warehouseId` (string, optional). Returns authoritative JSON metrics:
+  - `inbound`: `purchaseOrdersCount`, `totalExpectedUnits`, `receivedBoxesCount`, `discrepanciesCount`, `discrepancyBreakdown: { damaged, short, over, unexpected }`.
+  - `picking`: `totalPicksVerified`, `totalUnitsPicked`, `shortagePicksCount`, `substitutionsCount`, `totesDispatchedCount`.
+  - `inventory`: `totalOnHandQuantity`, `totalReservedQuantity`, `totalAvailableQuantity`, `totalHeldQuantity`, `stockOwners: [{ ownerId, ownerName, onHand, available, held }]`.
+  - `quality`: `activeHoldsCount`, `criticalHoldsCount`, `quarantinedBoxesCount`, `recentHolds: [{ id, boxId, reason, notes, createdAt }]`.
+  - `tasks`: `openTasksCount`, `claimedTasksCount`, `blockedTasksCount`, `tasksByType: { putaway, replenishment, picking, packing, cycle_count }`.
+- `GET /api/v1/reports/operations/pptx`: Requires supervisor or administrator role. Query params: `startDate`, `endDate`, `warehouseId`. Generates and streams an Open Packaging Conventions (OPC) PresentationML binary archive (.pptx) with headers:
+  - `Content-Type: application/vnd.openxmlformats-officedocument.presentationml.presentation`
+  - `Content-Disposition: attachment; filename="synthetic-cure-operations-report-<timestamp>.pptx"`
+  - Slide 1: Executive Title & Operational Briefing Context (Company, Warehouse, Timestamp, Floor Notice)
+  - Slide 2: Inbound Dock Intake & Supplier Receipts Breakdown
+  - Slide 3: Picking Floor Throughput & Shift Velocity
+  - Slide 4: Stock-Owner Inventory Distribution & Integrity
+  - Slide 5: Quality Quarantine Holds & Safety Metrics
+  - Slide 6: Shift Handover Action Items & Open Floor Exceptions
+
 
