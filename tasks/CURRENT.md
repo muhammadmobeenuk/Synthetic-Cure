@@ -1,4 +1,32 @@
-# Active slice · P2 Batch/Serial/Expiry Tracing, Quality Holds, Recalls and Scoped Offline Sync
+# Completed slice · P3 Client Portal, Webhooks/Notifications, and Carrier/Accounting Adapters Foundation
+
+Acceptance: Deliver authenticated client portal self-service, operational event webhooks, and standardized carrier/accounting export adapters:
+1. Client & stock-owner portal (`client_portal_users`): Scoped client access mapped to specific `customer_id` and/or `stock_owner_id`. Authoritative balances (`GET /api/v1/portal/inventory`), customer order history (`GET /api/v1/portal/orders`), draft customer order placement (`POST /api/v1/portal/orders`), and tracked shipments with delivery notes (`GET /api/v1/portal/shipments`). Invariant: Strict tenant and entity isolation; clients can never view, search, or mutate stock or orders belonging to another customer or stock owner.
+2. Operational event webhooks & notifications (`notification_endpoints`, `notification_deliveries`): Asynchronous, durable webhook subscription engine supporting event topics (`order.created`, `order.dispatched`, `order.delivered`, `inbound.received`, `quality_hold.placed`, `recall.initiated`). Generates HMAC-SHA256 signature (`X-Synthetic-Signature`) for payload verification, maintains delivery audit log with response codes and retry status, and supports manual test pings (`POST /api/v1/notifications/test`).
+3. Carrier manifest & accounting export adapters (`carrier_manifests`): Carrier booking and shipment manifest generation (`GET /api/v1/adapters/carrier/manifest/:tripId`) with vehicle, pallet, box count, and stop breakdowns in structured JSON and CSV formats. Accounting invoice and ledger export adapter (`GET /api/v1/adapters/accounting/export`) providing verified physical quantities, unit breakdowns, formula-injection neutralization (`=`, `+`, `-`, `@`), and explicit unverified pricing notices.
+4. Additive database migration & backup v8: Migration `019_client_portal_notifications_adapters.sql`, backup format `jadesun-v8` in `packages/database/backup.ts` preserving legacy v1–v7 restore compatibility without data loss or duplicate bootstrap entries.
+5. User interface: Client Portal view, Webhook settings panel, and Carrier/Accounting export action triggers in `apps/web`.
+
+Contracts: `packages/contracts/portal.ts`, `packages/contracts/notifications.ts`, `packages/contracts/adapters.ts`.
+Domain: `packages/domain/portal.ts`, `packages/domain/notifications.ts`, `packages/domain/adapters.ts`.
+Database: Migration `019_client_portal_notifications_adapters.sql`, logical backup v8 in `packages/database/backup.ts`.
+API: `/api/v1/portal/*`, `/api/v1/notifications/*`, `/api/v1/adapters/*`.
+UI: `apps/web/src/PortalView.tsx`, integrated in `apps/web/src/main.tsx`.
+
+Failure/recovery: preserve all domain invariants—server-derived actors and provenance, zero stock changes from OCR, stable box identity, at most one pallet, standalone vs inherited pallet location, verified conversions only, transactional idempotency (`clientOperationId`), 409 on stale versions, append-only audit events, returns held, no stock invented.
+
+Verification:
+- P3 Portal, Notifications & Adapters Test Suite (`tests/p3-portal-notifications-adapters.test.ts`): PASSED (6/6 tests, 100% pass rate).
+- Full Regression Test Suite (`npm test`): PASSED (145 tests: 143 passed, 0 failed, 2 skipped: 1 native PostgreSQL skipped, 1 tesseract skipped; 39.9s).
+- Strict TypeScript Check (`npm run typecheck` / `tsc --noEmit`): PASSED (0 errors).
+- Client Application Bundle Build (`npm run build` / `vite build`): PASSED (built in 598ms).
+- Native PostgreSQL Concurrency & Restore: BLOCKED pending provision of disposable databases (`TEST_DATABASE_URL` and `TEST_RESTORE_DATABASE_URL`).
+- Physical Warehouse Mobile Terminals & Hardware Scanners: UNVERIFIED (hardware not connected). Production readiness is not claimed.
+
+## Next slice · P3 PowerPoint Operations Report (Pending User Specifications)
+Awaiting user specification of target audience, report metrics/data scopes, and template requirements before implementing PowerPoint generation.
+
+## Previous slice · P2 Batch/Serial/Expiry Tracing, Quality Holds, Recalls and Scoped Offline Sync
 
 Acceptance: Deliver complete product traceability, quality quarantine holds, recall investigation & execution, and scoped offline sync with bounded retries:
 1. Batch, serial & expiry tracing: Serial number tracking (`item_serials`), lot metadata extension (manufacturing date, origin, cold chain limits, quality status), and forward/backward traceability query engine.

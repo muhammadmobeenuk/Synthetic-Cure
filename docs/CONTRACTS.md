@@ -53,3 +53,21 @@ GET /api/v1/pallet-groups/:id/reconciliation requires dispatch permission and th
 - `GET /api/v1/sync/outbox`: Returns user/company/warehouse scoped offline outbox mutations.
 - `POST /api/v1/sync/resolve-conflict`: `{queueId, action: 'retry'|'rebase'|'discard', rebaseExpectedVersion?}`. Resolves visible 409 conflict. Bounded retries (maximum 5).
 
+## P3 Client Portal, Webhooks/Notifications & Carrier/Accounting Adapters
+
+- `GET /api/v1/portal/me`: Returns client portal authorization context (`customerId`, `stockOwnerId`, `customerName`, `stockOwnerName`). Returns 403 `PORTAL_ACCESS_DENIED` if user is not linked to a customer or stock owner.
+- `POST /api/v1/portal/link-user`: Requires administrator permission. Body: `{clientOperationId, userId, customerId?, stockOwnerId?}`. Links a user account to a customer or stock owner entity.
+- `GET /api/v1/portal/inventory`: Returns real-time authoritative inventory balances for the linked stock owner or customer's dedicated stock. Isolated from other customers/owners.
+- `GET /api/v1/portal/orders`: Returns customer order history for the authenticated client's customer identity.
+- `POST /api/v1/portal/orders`: Body: `{clientOperationId, destinationId, lines: [{productId, quantity}], notes?}`. Submits a draft customer order. Atomically validates authorized destinations and positive quantities.
+- `GET /api/v1/portal/shipments`: Returns outbound shipments, vehicles, stops, and delivery note details for the client's orders.
+- `GET /api/v1/notifications/endpoints`: Requires configure permission. Returns registered webhook endpoints for the current organization.
+- `POST /api/v1/notifications/endpoints`: Requires configure permission. Body: `{clientOperationId, url, topics, secret, active?}`. Registers a new webhook subscription.
+- `POST /api/v1/notifications/endpoints/:id`: Requires configure permission. Body: `{clientOperationId, expectedVersion, url?, topics?, secret?, active?}`. Updates webhook subscription.
+- `POST /api/v1/notifications/test`: Requires configure permission. Body: `{endpointId}`. Dispatches an immediate test ping event (`test.ping`) signed with HMAC-SHA256 (`X-Synthetic-Signature`).
+- `GET /api/v1/notifications/deliveries`: Requires configure permission. Returns delivery audit log with response status, error messages, and retry attempts.
+- `POST /api/v1/adapters/carrier/manifest`: Requires dispatch permission. Body: `{clientOperationId, tripId, carrierName, serviceLevel, trackingNumber?, notes?}`. Books a carrier manifest.
+- `GET /api/v1/adapters/carrier/manifest/:tripId`: Returns structured carrier manifest with vehicle details, pallets, boxes, and destination stops. Query param `format=csv` exports a standardized CSV manifest.
+- `GET /api/v1/adapters/accounting/export`: Requires configure permission. Query params: `startDate`, `endDate`, `format` (`json` | `csv`). Returns accounting ledger and billed transactions with formula-injection neutralization (`=`, `+`, `-`, `@`) and explicit unverified pricing notices.
+
+

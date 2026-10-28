@@ -201,3 +201,6 @@ export * from './transport.js';
 export * from './orders.js';
 export * from './traceability.js';
 export * from './offline-sync.js';
+export * from './portal.js';
+export * from './notifications.js';
+export * from './adapters.js';

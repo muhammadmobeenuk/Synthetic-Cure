@@ -73,6 +73,12 @@ export const p2Tables = [
   "recalls",
   "sync_outbox",
 ];
+export const p3Tables = [
+  "client_portal_users",
+  "notification_endpoints",
+  "notification_deliveries",
+  "carrier_manifests",
+];
 // Logical backups include domain/configuration records, not expiring sessions.
 export async function snapshot(db: DB) {
   return db.transaction(async (t) => {
@@ -93,12 +99,19 @@ export async function snapshot(db: DB) {
         data[table] = (await t.query("SELECT * FROM " + table)).rows;
       }
     }
-    return { format: "jadesun-v7", createdAt: new Date().toISOString(), tables: data };
+    for (const table of p3Tables) {
+      if (existingTables.has(table)) {
+        data[table] = (await t.query("SELECT * FROM " + table)).rows;
+      }
+    }
+    return { format: "jadesun-v8", createdAt: new Date().toISOString(), tables: data };
   });
 }
 function validateBackup(backup: any) {
-  if (!backup || !["jadesun-v1", "jadesun-v2", "jadesun-v3", "jadesun-v4", "jadesun-v5", "jadesun-v6", "jadesun-v7"].includes(backup.format) || !backup.tables)
+  if (!backup || !["jadesun-v1", "jadesun-v2", "jadesun-v3", "jadesun-v4", "jadesun-v5", "jadesun-v6", "jadesun-v7", "jadesun-v8"].includes(backup.format) || !backup.tables)
     throw new Error("Unsupported backup format");
+  if (p3Tables.some((t) => backup.tables[t] !== undefined) && !p3Tables.every((t) => Array.isArray(backup.tables[t])))
+    throw new Error("Incomplete P3 portal, notifications and adapters backup tables");
   if (p2Tables.some((t) => backup.tables[t] !== undefined) && !p2Tables.every((t) => Array.isArray(backup.tables[t])))
     throw new Error("Incomplete P2 traceability and sync backup tables");
   if (p1Tables.some((t) => backup.tables[t] !== undefined) && !p1Tables.every((t) => Array.isArray(backup.tables[t])))
@@ -119,10 +132,10 @@ function validateBackup(backup: any) {
   if (newTables.some((t) => backup.tables[t] !== undefined) && !newTables.every((t) => Array.isArray(backup.tables[t])))
     throw new Error("Incomplete access backup tables");
   for (const table of backupTables) {
-    if (!["jadesun-v6", "jadesun-v7"].includes(backup.format) && inboundTables.includes(table) && backup.tables[table] === undefined) continue;
-    if (!["jadesun-v5", "jadesun-v6", "jadesun-v7"].includes(backup.format) && groupTables.includes(table) && backup.tables[table] === undefined) continue;
-    if (!["jadesun-v4", "jadesun-v5", "jadesun-v6", "jadesun-v7"].includes(backup.format) && importTables.includes(table) && backup.tables[table] === undefined) continue;
-    if (!["jadesun-v3", "jadesun-v4", "jadesun-v5", "jadesun-v6", "jadesun-v7"].includes(backup.format) && newTables.includes(table) && backup.tables[table] === undefined) continue;
+    if (!["jadesun-v6", "jadesun-v7", "jadesun-v8"].includes(backup.format) && inboundTables.includes(table) && backup.tables[table] === undefined) continue;
+    if (!["jadesun-v5", "jadesun-v6", "jadesun-v7", "jadesun-v8"].includes(backup.format) && groupTables.includes(table) && backup.tables[table] === undefined) continue;
+    if (!["jadesun-v4", "jadesun-v5", "jadesun-v6", "jadesun-v7", "jadesun-v8"].includes(backup.format) && importTables.includes(table) && backup.tables[table] === undefined) continue;
+    if (!["jadesun-v3", "jadesun-v4", "jadesun-v5", "jadesun-v6", "jadesun-v7", "jadesun-v8"].includes(backup.format) && newTables.includes(table) && backup.tables[table] === undefined) continue;
     if (backup.format === "jadesun-v1" && ["company_configuration", "company_configuration_revisions"].includes(table) && backup.tables[table] === undefined) continue;
     if (!Array.isArray(backup.tables[table]))
       throw new Error("Missing backup table: " + table);
@@ -135,7 +148,7 @@ async function insertSnapshot(t: DB, backup: any) {
   // Local transaction flag suppresses compatibility bootstraps only for complete dimension backups.
   // It is not an authorization context and cannot leak to another pooled transaction.
   await t.query("SELECT set_config('warehouse.restoring',$1,true)", [backup.tables.warehouses ? "true" : "false"]);
-  const allTables = [...backupTables, ...p1Tables, ...p2Tables];
+  const allTables = [...backupTables, ...p1Tables, ...p2Tables, ...p3Tables];
   for (const table of allTables) {
     if (!backup.tables[table]) continue;
     const columns = new Map(
@@ -166,6 +179,10 @@ async function requireEmpty(t: DB) {
       throw new Error("Restore target must be empty");
   }
   for (const table of p2Tables) {
+    if (existingTables.has(table) && (await t.query("SELECT 1 FROM " + table + " LIMIT 1")).rows.length)
+      throw new Error("Restore target must be empty");
+  }
+  for (const table of p3Tables) {
     if (existingTables.has(table) && (await t.query("SELECT 1 FROM " + table + " LIMIT 1")).rows.length)
       throw new Error("Restore target must be empty");
   }

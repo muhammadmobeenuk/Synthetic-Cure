@@ -190,6 +190,41 @@ import {
   offlineOperationQueue,
   offlineConflictResolve,
 } from '../../packages/contracts/offline-sync.js';
+import {
+  getPortalContext,
+  linkPortalUser,
+  getPortalInventory,
+  getPortalOrders,
+  submitPortalDraftOrder,
+  getPortalShipments,
+} from "../../packages/domain/portal.js";
+import {
+  portalDraftOrder,
+  portalLinkUser,
+} from "../../packages/contracts/portal.js";
+import {
+  listNotificationEndpoints,
+  createNotificationEndpoint,
+  updateNotificationEndpoint,
+  testNotificationEndpoint,
+  listNotificationDeliveries,
+} from "../../packages/domain/notifications.js";
+import {
+  notificationEndpointCreate,
+  notificationEndpointUpdate,
+  notificationTestPing,
+} from "../../packages/contracts/notifications.js";
+import {
+  bookCarrierManifest,
+  getCarrierManifest,
+  exportCarrierManifestCsv,
+  exportAccountingLedger,
+  exportAccountingCsv,
+} from "../../packages/domain/adapters.js";
+import {
+  carrierManifestBooking,
+  accountingExportParams,
+} from "../../packages/contracts/adapters.js";
 
 import {palletGroupList,palletGroupReconciliation,createPalletGroup,changePalletGroup,loadPalletGroupWorkflow} from '../../packages/domain/pallet-groups.js';
 import {errorCsv} from '../../packages/domain/csv.js';
@@ -466,29 +501,33 @@ export function createApp(
       name: (req: Request) => string,
       fn: (t: DB, a: Actor, p: any, req: Request) => Promise<any>,
     ) =>
-    async (req: Request, res: Response) => {
-      authorize(req.actor, action);
-      const p = schema.parse(req.body);
-      if (req.actor.role === "driver") {
-        const shipment = await owned(
-          db,
-          "shipments",
-          String(req.params.id),
-          req.actor,
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        authorize(req.actor, action);
+        const p = schema.parse(req.body);
+        if (req.actor.role === "driver") {
+          const shipment = await owned(
+            db,
+            "shipments",
+            String(req.params.id),
+            req.actor,
+          );
+          const trip = await owned(db, "trips", shipment.trip_id, req.actor);
+          requireRule(
+            trip.driver_id === req.actor.id,
+            "FORBIDDEN",
+            "This trip is not assigned to you",
+            403,
+          );
+        }
+        res.json(
+          await command(db, req.actor, name(req), p, (t) =>
+            fn(t, req.actor, p, req),
+          ),
         );
-        const trip = await owned(db, "trips", shipment.trip_id, req.actor);
-        requireRule(
-          trip.driver_id === req.actor.id,
-          "FORBIDDEN",
-          "This trip is not assigned to you",
-          403,
-        );
+      } catch (err) {
+        next(err);
       }
-      res.json(
-        await command(db, req.actor, name(req), p, (t) =>
-          fn(t, req.actor, p, req),
-        ),
-      );
     };
   app.get("/api/v1/workspace", async (req, res) => {
     const a = req.actor,
@@ -2378,6 +2417,167 @@ export function createApp(
     );
     res.json(job.result);
   });
+
+  // Client Portal & Stock-Owner Self-Service Endpoints
+  app.get("/api/v1/portal/me", async (req, res, next) => {
+    try {
+      res.json(await getPortalContext(db, req.actor));
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post(
+    "/api/v1/portal/link-user",
+    run(
+      portalLinkUser,
+      "review",
+      () => "portal_link_user",
+      async (t, a, p) => linkPortalUser(t, a, p),
+    ),
+  );
+
+  app.get("/api/v1/portal/inventory", async (req, res, next) => {
+    try {
+      res.json(await getPortalInventory(db, req.actor));
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.get("/api/v1/portal/orders", async (req, res, next) => {
+    try {
+      res.json(await getPortalOrders(db, req.actor));
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post("/api/v1/portal/orders", async (req, res, next) => {
+    try {
+      const p = portalDraftOrder.parse(req.body);
+      res.json(
+        await command(
+          db,
+          req.actor,
+          "portal_draft_order",
+          p,
+          async (t) => submitPortalDraftOrder(t, req.actor, p),
+        ),
+      );
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.get("/api/v1/portal/shipments", async (req, res, next) => {
+    try {
+      res.json(await getPortalShipments(db, req.actor));
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // Operational Notifications & Webhooks Endpoints
+  app.get("/api/v1/notifications/endpoints", async (req, res, next) => {
+    try {
+      res.json(await listNotificationEndpoints(db, req.actor));
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post(
+    "/api/v1/notifications/endpoints",
+    run(
+      notificationEndpointCreate,
+      "review",
+      () => "create_notification_endpoint",
+      async (t, a, p) => createNotificationEndpoint(t, a, p),
+    ),
+  );
+
+  app.patch(
+    "/api/v1/notifications/endpoints/:id",
+    run(
+      notificationEndpointUpdate,
+      "review",
+      () => "update_notification_endpoint",
+      async (t, a, p, req) => updateNotificationEndpoint(t, a, { id: req.params.id, ...p }),
+    ),
+  );
+
+  app.post(
+    "/api/v1/notifications/test",
+    run(
+      notificationTestPing,
+      "review",
+      () => "test_notification_endpoint",
+      async (t, a, p) => testNotificationEndpoint(t, a, p),
+    ),
+  );
+
+  app.get("/api/v1/notifications/deliveries", async (req, res, next) => {
+    try {
+      res.json(await listNotificationDeliveries(db, req.actor, req.query.endpointId as string));
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // Carrier & Accounting Adapters Endpoints
+  app.post(
+    "/api/v1/adapters/carrier/book",
+    run(
+      carrierManifestBooking,
+      "dispatch",
+      () => "carrier_manifest_booking",
+      async (t, a, p) => bookCarrierManifest(t, a, p),
+    ),
+  );
+
+  app.get("/api/v1/adapters/carrier/manifest/:tripId", async (req, res, next) => {
+    try {
+      res.json(await getCarrierManifest(db, req.actor, req.params.tripId));
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.get("/api/v1/adapters/carrier/manifest/:tripId/csv", async (req, res, next) => {
+    try {
+      const manifest = await getCarrierManifest(db, req.actor, req.params.tripId);
+      const csv = exportCarrierManifestCsv(manifest);
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="carrier-manifest-${req.params.tripId}.csv"`);
+      res.send(csv);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.get("/api/v1/adapters/accounting/export", async (req, res, next) => {
+    try {
+      const params = accountingExportParams.parse(req.query);
+      res.json(await exportAccountingLedger(db, req.actor, params));
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.get("/api/v1/adapters/accounting/export/csv", async (req, res, next) => {
+    try {
+      const params = accountingExportParams.parse(req.query);
+      const data = await exportAccountingLedger(db, req.actor, params);
+      const csv = exportAccountingCsv(data);
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="accounting-export-${new Date().toISOString().split("T")[0]}.csv"`);
+      res.send(csv);
+    } catch (e) {
+      next(e);
+    }
+  });
+
   app.use("/api", (_req, _res, next) =>
     next(new DomainError(404, "NOT_FOUND", "API route not found")),
   );

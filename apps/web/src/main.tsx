@@ -5,6 +5,7 @@ import {CustomerOrderForm} from "./CustomerOrderForm";
 import {ProductImport} from "./ProductImport";
 import {Inbound} from "./Inbound";
 import {Traceability} from "./Traceability";
+import {PortalView} from "./PortalView";
 import {DraftRecovery} from "./DraftRecovery";
 import {ContextPicker,AccessControl} from "./AccessControl";
 import {SmartCombobox, SmartQuantityInput, useBarcodeScanner, playScanFeedback, SmartSignaturePad, checkEnvironmentalCompatibility, EnvironmentalWarningBadge} from "./SmartInputs";
@@ -118,6 +119,7 @@ const nav = [
   ["review", "Returns & review", AlertTriangle],
   ["documents", "Documents & labels", FileText],
   ["settings", "Settings", Settings],
+  ["portal", "Client portal", ShieldCheck],
 ] as const;
 const statuses: Record<string, string> = {
   unconfirmed: "Unconfirmed",
@@ -3055,6 +3057,9 @@ function App() {
                     </>
                   )}
                 </div>
+              )}
+              {page === "portal" && (
+                <PortalView user={user} />
               )}
             </>
           )}
