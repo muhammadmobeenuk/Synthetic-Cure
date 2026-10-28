@@ -112,7 +112,56 @@ import {
   onboardingReviewComplete,
 } from '../../packages/contracts/onboarding.js';
 import {workerOrderSheet} from '../../packages/domain/worker-sheet.js';
-import {palletGroupList,palletGroupReconciliation,createPalletGroup,changePalletGroup} from '../../packages/domain/pallet-groups.js';
+import {
+  claimTask,
+  reassignTask,
+  startTask,
+  blockTask,
+  createShiftHandover,
+  acknowledgeShiftHandover,
+  listShiftHandovers,
+} from '../../packages/domain/tasks.js';
+import {
+  taskClaim,
+  taskReassign,
+  taskStart,
+  taskBlock,
+  shiftHandoverCreate,
+  shiftHandoverAcknowledge,
+} from '../../packages/contracts/tasks.js';
+import {
+  registerTote,
+  listTotes,
+  verifyPickOperation,
+  listPickVerifications,
+} from '../../packages/domain/picking.js';
+import { toteRegister, pickVerify } from '../../packages/contracts/picking.js';
+import {
+  reassignTripDriver,
+  failStopDelivery,
+  collectStopReturn,
+  listDriverReassignments,
+} from '../../packages/domain/transport.js';
+import {
+  driverReassign,
+  deliveryFail,
+  stopCollectReturn,
+} from '../../packages/contracts/transport.js';
+import {
+  cancelOrderWithReconciliation,
+  listOrderBackorders,
+} from '../../packages/domain/orders.js';
+import { orderCancelReconcile } from '../../packages/contracts/orders.js';
+import {
+  getCustomerDeliveryNote,
+  getCustomerInvoice,
+  getRecipientPalletLabels,
+} from '../../packages/domain/documents.js';
+import {
+  suggestPreparationBatches,
+  createScheduledEmptyBatch,
+} from '../../packages/domain/scheduling.js';
+import {palletGroupList,palletGroupReconciliation,createPalletGroup,changePalletGroup,loadPalletGroupWorkflow} from '../../packages/domain/pallet-groups.js';
 import {errorCsv} from '../../packages/domain/csv.js';
 import {contexts,permittedWarehouses,resolveActor,validateActor,legacyWarehouse} from "../../packages/domain/context.js";
 import {accessDirectory,changeMembership,createWarehouse,reviewWarehouse,changeWarehouseGrant,provisionStaff} from "../../packages/domain/access.js";
@@ -1853,6 +1902,115 @@ export function createApp(
   app.post("/api/v1/onboarding/step", run(onboardingStepSave, "configure", () => "onboarding-step", (t, a, p) => saveOnboardingStep(t, a, p)));
   app.post("/api/v1/onboarding/review", run(onboardingReviewComplete, "configure", () => "onboarding-review", (t, a, p) => completeOnboardingReview(t, a, p)));
 
+  // --- P1 Tasks and Shift Handover ---
+  app.post("/api/v1/tasks/:id/claim", run(taskClaim, "prepare", (r) => "task-claim:" + r.params.id, (t, a, p, r) => claimTask(t, a, String(r.params.id), p)));
+  app.post("/api/v1/tasks/:id/reassign", run(taskReassign, "prepare", (r) => "task-reassign:" + r.params.id, (t, a, p, r) => reassignTask(t, a, String(r.params.id), p)));
+  app.post("/api/v1/tasks/:id/start", run(taskStart, "prepare", (r) => "task-start:" + r.params.id, (t, a, p, r) => startTask(t, a, String(r.params.id), p)));
+  app.post("/api/v1/tasks/:id/block", run(taskBlock, "prepare", (r) => "task-block:" + r.params.id, (t, a, p, r) => blockTask(t, a, String(r.params.id), p)));
+  app.get("/api/v1/shift-handovers", async (req, res) => res.json(await listShiftHandovers(db, req.actor)));
+  app.post("/api/v1/shift-handovers", run(shiftHandoverCreate, "prepare", () => "shift-handover-create", (t, a, p) => createShiftHandover(t, a, p)));
+  app.post("/api/v1/shift-handovers/:id/acknowledge", run(shiftHandoverAcknowledge, "prepare", (r) => "shift-handover-ack:" + r.params.id, (t, a, p, r) => acknowledgeShiftHandover(t, a, String(r.params.id), p)));
+
+  // --- P1 Picking Exceptions & Totes ---
+  app.get("/api/v1/picking/totes", async (req, res) => res.json(await listTotes(db, req.actor)));
+  app.post("/api/v1/picking/totes", run(toteRegister, "prepare", () => "tote-register", (t, a, p) => registerTote(t, a, p)));
+  app.post("/api/v1/picking/verify", run(pickVerify, "prepare", () => "pick-verify", (t, a, p) => verifyPickOperation(t, a, p)));
+  app.get("/api/v1/picking/verifications/:orderId", async (req, res) => res.json(await listPickVerifications(db, req.actor, String(req.params.orderId))));
+
+  // --- P1 Package Splitting & Repacking Quantity Conservation ---
+  app.post("/api/v1/boxes/:id/split", run(schemas.packageSplit, "pack", (r) => "package-split:" + r.params.id, (t, a, p, r) => services.splitPackage(t, a, String(r.params.id), p)));
+
+  // --- P1 Pallet Group End-to-End Loading Workflow ---
+  app.post(
+    "/api/v1/pallet-groups/:id/load",
+    run(
+      schemas.versioned.extend({
+        tripId: schemas.id,
+        recipientType: z.enum(["final_recipient", "intermediary"]).optional(),
+        recipientName: z.string().max(200).optional(),
+      }),
+      "dispatch",
+      (r) => "pallet-group-load:" + r.params.id,
+      (t, a, p, r) => loadPalletGroupWorkflow(t, a, String(r.params.id), p),
+    ),
+  );
+
+  // --- P1 Transport Custody, Reassignment & Reverse Collections ---
+  app.post("/api/v1/trips/:id/reassign-driver", run(driverReassign, "dispatch", (r) => "driver-reassign:" + r.params.id, (t, a, p, r) => reassignTripDriver(t, a, String(r.params.id), p)));
+  app.get("/api/v1/trips/:id/reassignments", async (req, res) => res.json(await listDriverReassignments(db, req.actor, String(req.params.id))));
+  app.post("/api/v1/shipments/:id/fail-delivery", async (req, res, next) => {
+    try {
+      requireRule(
+        req.actor.role === "driver" || permissions[req.actor.role]?.some((p) => p === "*" || p === "dispatch"),
+        "FORBIDDEN",
+        "Your role cannot perform delivery actions",
+        403,
+      );
+      const p = deliveryFail.parse(req.body);
+      res.json(
+        await command(db, req.actor, "delivery-fail:" + req.params.id, p, (t) =>
+          failStopDelivery(t, req.actor, String(req.params.id), p),
+        ),
+      );
+    } catch (e) {
+      next(e);
+    }
+  });
+  app.post("/api/v1/trips/:id/collect-return", async (req, res, next) => {
+    try {
+      requireRule(
+        req.actor.role === "driver" || permissions[req.actor.role]?.some((p) => p === "*" || p === "dispatch"),
+        "FORBIDDEN",
+        "Your role cannot perform delivery actions",
+        403,
+      );
+      const p = stopCollectReturn.parse(req.body);
+      res.json(
+        await command(db, req.actor, "stop-collect-return:" + req.params.id, p, (t) =>
+          collectStopReturn(t, req.actor, String(req.params.id), p),
+        ),
+      );
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // --- P1 Reconciled Order Cancellation & Backorders ---
+  app.post("/api/v1/orders/:id/cancel-reconcile", run(orderCancelReconcile, "adjust", (r) => "order-cancel-reconcile:" + r.params.id, (t, a, p, r) => cancelOrderWithReconciliation(t, a, String(r.params.id), p)));
+  app.get("/api/v1/orders/backorders", async (req, res) => res.json(await listOrderBackorders(db, req.actor, typeof req.query.orderId === "string" ? { orderId: req.query.orderId } : undefined)));
+
+  // --- P1 Staff Order Sheet & Customer Documents (Gated commercial/tax terms) ---
+  app.get("/api/v1/documents/customer-delivery-note/:shipmentId", async (req, res, next) => {
+    try {
+      const html = await getCustomerDeliveryNote(db, req.actor, String(req.params.shipmentId), { requireCommercial: req.query.confirmCommercialTerms === "true" });
+      res.type("html").send(html);
+    } catch (e) {
+      next(e);
+    }
+  });
+  app.get("/api/v1/documents/customer-invoice/:shipmentId", async (req, res, next) => {
+    try {
+      res.json(await getCustomerInvoice(db, req.actor, String(req.params.shipmentId)));
+    } catch (e) {
+      next(e);
+    }
+  });
+  app.get("/api/v1/documents/recipient-pallet-labels/:shipmentId", async (req, res, next) => {
+    try {
+      res.json(await getRecipientPalletLabels(db, req.actor, String(req.params.shipmentId), { requireCommercial: req.query.confirmCommercialTerms === "true" }));
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // --- P1 Configurable Preparation Schedules ---
+  app.get("/api/v1/schedules/suggest", async (req, res) => {
+    const fromDate = typeof req.query.fromDate === "string" ? req.query.fromDate : new Date().toISOString().slice(0, 10);
+    const count = req.query.count ? Number(req.query.count) : 4;
+    res.json(await suggestPreparationBatches(db, req.actor, fromDate, count));
+  });
+  app.post("/api/v1/schedules/batch", run(schemas.command.extend({ targetDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }), "prepare", () => "schedule-batch-create", (t, a, p) => createScheduledEmptyBatch(t, a, { businessDate: p.targetDate })));
+
   app.get('/api/v1/ai/status',async(req,res)=>{authorize(req.actor,'receive');res.json(await ocrStatus())});
   app.post('/api/v1/documents/:id/extract',run(schemas.extractionRequest,'receive',r=>'extract:'+r.params.id,async(t,a,p,r)=>{
     const doc=await owned(t,'documents',String(r.params.id),a);requireRule(['image/jpeg','image/png','image/webp'].includes(doc.mime),'OCR_TYPE','Select a JPEG, PNG or WebP image',422);
@@ -2065,6 +2223,7 @@ export function createApp(
         code: err.code || err.name,
       }),
     );
+    res.setHeader("Content-Type", "application/json");
     res.status(status).json({
       error: {
         code: zerr ? "VALIDATION" : err.code || "SERVER_ERROR",

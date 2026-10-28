@@ -61,6 +61,11 @@ export const p1Tables = [
   "csv_import_errors",
   "warehouse_onboarding",
   "policy_snapshots",
+  "shift_handovers",
+  "picking_totes",
+  "picking_verifications",
+  "order_backorders",
+  "driver_reassignments",
 ];
 // Logical backups include domain/configuration records, not expiring sessions.
 export async function snapshot(db: DB) {

@@ -183,8 +183,20 @@ export const searchParams = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 
+export const packageSplit = versioned.extend({
+  contentsId: id,
+  quantity,
+  locationId: id.optional(),
+  catchWeight: quantity.optional(),
+  packageCount: z.number().int().positive().optional(),
+  reason: z.string().min(3).max(500),
+});
+
 export * from './inventory.js';
 export * from './tasks.js';
 export * from './transfers.js';
 export * from './onboarding.js';
+export * from './picking.js';
+export * from './transport.js';
+export * from './orders.js';
 

@@ -632,11 +632,51 @@ export async function dispatchSupplierReturn(
   );
 
   // If a box is attached, mark the box returned/dispatched to supplier
+  let locationId: string | null = null;
   if (ret.box_id) {
+    const box = (await t.query('SELECT location_id, pallet_id FROM boxes WHERE id=$1', [ret.box_id])).rows[0];
+    locationId = box?.location_id;
+    if (!locationId && box?.pallet_id) {
+      const pallet = (await t.query('SELECT location_id FROM pallets WHERE id=$1', [box.pallet_id])).rows[0];
+      locationId = pallet?.location_id;
+    }
     await t.query(
       "UPDATE boxes SET status='returned', condition='damaged', version=version+1 WHERE id=$1",
       [ret.box_id],
     );
+  }
+
+  // Decrement held stock from inventory_balances
+  const balRows = (
+    await t.query(
+      `SELECT * FROM inventory_balances
+       WHERE org_id=$1 AND warehouse_id=$2 AND product_id=$3 AND unit=$4 AND held > 0
+       ${locationId ? 'AND location_id=$5' : ''}
+       ORDER BY held DESC FOR UPDATE`,
+      locationId ? [a.org_id, a.warehouse_id, ret.product_id, ret.unit, locationId] : [a.org_id, a.warehouse_id, ret.product_id, ret.unit]
+    )
+  ).rows;
+
+  if (balRows.length > 0) {
+    let remainingToDeduct = new Decimal(ret.quantity);
+    for (const b of balRows) {
+      if (remainingToDeduct.lte(0)) break;
+      const bHeld = new Decimal(b.held);
+      const bOnHand = new Decimal(b.on_hand);
+      const deduct = Decimal.min(bHeld, remainingToDeduct);
+      const nextHeld = bHeld.minus(deduct);
+      const nextOnHand = bOnHand.minus(deduct);
+      await t.query(
+        'UPDATE inventory_balances SET held=$1, on_hand=$2, version=version+1 WHERE id=$3',
+        [nextHeld.toFixed(6), nextOnHand.toFixed(6), b.id],
+      );
+      await t.query(
+        `INSERT INTO inventory_ledger(id, org_id, warehouse_id, product_id, location_id, owner_id, box_id, quantity_delta, unit, state, reference_type, reference_id, actor_id, notes)
+         VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, 'held', 'supplier_return', $10, $11, 'Dispatched to supplier')`,
+        [uuid(), a.org_id, a.warehouse_id, b.product_id, b.location_id, b.owner_id, ret.box_id || null, (-deduct.toNumber()).toFixed(6), ret.unit, id, a.id],
+      );
+      remainingToDeduct = remainingToDeduct.minus(deduct);
+    }
   }
 
   await t.query(

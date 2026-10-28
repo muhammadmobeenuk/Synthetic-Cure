@@ -1484,15 +1484,9 @@ export const services = {
     const b = await owned(t, "boxes", id, a, true);
     version(b, p.expectedVersion);
     requireRule(
-      !b.pallet_id && b.status === "confirmed",
+      b.status === "confirmed",
       "BOX_STATE",
-      "Use a standalone confirmed box",
-    );
-    requireRule(
-      !(await t.query("SELECT id FROM allocations WHERE box_id=$1", [id])).rows
-        .length,
-      "ALLOCATED",
-      "Unallocate before repacking",
+      "Use a confirmed box",
     );
     const ct = await owned(t, "contents", p.contentsId, a, true);
     requireRule(
@@ -1506,6 +1500,12 @@ export const services = {
       "REPACK_QUANTITY",
       "Split quantity must be less than the source quantity",
     );
+    const allocs = (await t.query("SELECT * FROM allocations WHERE box_id=$1", [id])).rows;
+    for (const alloc of allocs) {
+      if (new Decimal(alloc.quantity).gt(remaining)) {
+        await t.query("UPDATE allocations SET quantity=$1 WHERE id=$2", [remaining.toFixed(), alloc.id]);
+      }
+    }
     await owned(t, "locations", p.locationId, a);
     await t.query("UPDATE contents SET quantity=$1 WHERE id=$2", [
       remaining.toFixed(),
@@ -1528,6 +1528,7 @@ export const services = {
         },
       ],
     });
+    await invalidate(t, a, id);
     await event(t, a, id, "box.repacked", {
       newBoxId: result.id,
       quantity: p.quantity,
@@ -1535,6 +1536,98 @@ export const services = {
       unit: ct.unit,
       reason: p.reason,
     });
+    return { source: await boxState(t, a, id), created: result };
+  },
+  async splitPackage(t: DB, a: Actor, id: string, p: any) {
+    const b = await owned(t, "boxes", id, a, true);
+    version(b, p.expectedVersion);
+    requireRule(b.status === "confirmed", "BOX_STATE", "Use a confirmed box");
+    const ct = await owned(t, "contents", p.contentsId, a, true);
+    requireRule(
+      ct.box_id === id && ct.verified,
+      "CONTENTS",
+      "Choose verified contents from this box",
+    );
+
+    const splitQty = new Decimal(p.quantity);
+    const origQty = new Decimal(ct.quantity);
+    const remainingQty = origQty.minus(splitQty);
+    requireRule(
+      remainingQty.gt(0),
+      "REPACK_QUANTITY",
+      "Split quantity must be less than source quantity",
+    );
+
+    let splitCatchWeight: string | null = null;
+    let remainingCatchWeight: string | null = null;
+    if (ct.catch_weight && p.catchWeight) {
+      const origCw = new Decimal(ct.catch_weight);
+      const sCw = new Decimal(p.catchWeight);
+      const rCw = origCw.minus(sCw);
+      requireRule(
+        rCw.gt(0),
+        "CATCH_WEIGHT_CONSERVATION",
+        "Remaining catch weight must be greater than zero",
+      );
+      splitCatchWeight = sCw.toFixed(6);
+      remainingCatchWeight = rCw.toFixed(6);
+    }
+
+    let splitPkgCount: number | null = null;
+    let remainingPkgCount: number | null = null;
+    if (ct.package_count && p.packageCount) {
+      const origPc = ct.package_count;
+      const sPc = p.packageCount;
+      const rPc = origPc - sPc;
+      requireRule(
+        rPc > 0,
+        "PACKAGE_COUNT_CONSERVATION",
+        "Remaining package count must be greater than zero",
+      );
+      splitPkgCount = sPc;
+      remainingPkgCount = rPc;
+    }
+
+    await t.query(
+      "UPDATE contents SET quantity=$1, catch_weight=COALESCE($2, catch_weight), package_count=COALESCE($3, package_count) WHERE id=$4",
+      [remainingQty.toFixed(), remainingCatchWeight, remainingPkgCount, ct.id],
+    );
+    await t.query("UPDATE boxes SET version=version+1 WHERE id=$1", [id]);
+
+    const targetLoc = p.locationId || b.location_id;
+    const result = await services.receipt(t, a, {
+      customerId: b.customer_id,
+      locationId: targetLoc,
+      sourceLabel: "Split from " + b.code,
+      condition: "good",
+      contents: [
+        {
+          productId: ct.product_id,
+          quantity: splitQty.toFixed(),
+          unit: ct.unit,
+          verified: true,
+          lotId: ct.lot_id || undefined,
+          catchWeight: splitCatchWeight || undefined,
+          packageCount: splitPkgCount || undefined,
+          temperatureC: ct.temperature_c,
+        },
+      ],
+    });
+
+    await invalidate(t, a, id);
+    await invalidate(t, a, result.id);
+
+    await event(t, a, id, "package.split", {
+      newBoxId: result.id,
+      splitQuantity: splitQty.toFixed(),
+      remainingQuantity: remainingQty.toFixed(),
+      splitCatchWeight,
+      remainingCatchWeight,
+      splitPackageCount: splitPkgCount,
+      remainingPackageCount: remainingPkgCount,
+      reason: p.reason,
+    });
+
     return { source: await boxState(t, a, id), created: result };
   },
 };

@@ -4,8 +4,14 @@ import type { DB } from '../database/index.js';
 import {
   putawayTaskCreate,
   taskAssign,
+  taskClaim,
+  taskReassign,
+  taskStart,
+  taskBlock,
   taskComplete,
   taskCancel,
+  shiftHandoverCreate,
+  shiftHandoverAcknowledge,
   replenishmentPolicySet,
   replenishmentTrigger,
 } from '../contracts/tasks.js';
@@ -15,7 +21,7 @@ import { requireRule, DomainError } from './index.js';
 export async function listTasks(
   t: DB,
   a: Actor,
-  filters?: { kind?: string; status?: string },
+  filters?: { kind?: string; status?: string; assignedUserId?: string },
 ) {
   authorize(a, 'review');
   requireRule(a.warehouse_id, 'WAREHOUSE_ACCESS', 'Select an assigned warehouse', 403);
@@ -24,13 +30,15 @@ export async function listTasks(
            p.sku, p.name product_name, p.name_zh,
            b.code box_code,
            sl.code source_location_code, dl.code destination_location_code,
-           u.name assigned_user_name
+           u.name assigned_user_name,
+           cu.name claimed_by_name
     FROM warehouse_tasks wt
     LEFT JOIN products p ON p.id = wt.product_id AND p.org_id = wt.org_id
     LEFT JOIN boxes b ON b.id = wt.box_id AND b.warehouse_id = wt.warehouse_id
     JOIN locations sl ON sl.id = wt.source_location_id AND sl.warehouse_id = wt.warehouse_id
     JOIN locations dl ON dl.id = wt.destination_location_id AND dl.warehouse_id = wt.warehouse_id
     LEFT JOIN users u ON u.id = wt.assigned_user_id
+    LEFT JOIN users cu ON cu.id = wt.claimed_by
     WHERE wt.org_id = $1 AND wt.warehouse_id = $2
   `;
   const params: any[] = [a.org_id, a.warehouse_id];
@@ -41,6 +49,10 @@ export async function listTasks(
   if (filters?.status) {
     params.push(filters.status);
     sql += ` AND wt.status = $${params.length}`;
+  }
+  if (filters?.assignedUserId) {
+    params.push(filters.assignedUserId);
+    sql += ` AND wt.assigned_user_id = $${params.length}`;
   }
   sql += ' ORDER BY wt.priority DESC, wt.created_at ASC LIMIT 100';
   return (await t.query(sql, params)).rows;
@@ -78,8 +90,8 @@ export async function createPutawayTask(t: DB, a: Actor, payload: unknown) {
 
   const taskId = uuid();
   await t.query(
-    `INSERT INTO warehouse_tasks(id, org_id, warehouse_id, kind, status, priority, product_id, box_id, source_location_id, destination_location_id, quantity, unit, version)
-     VALUES($1, $2, $3, 'putaway', 'pending', $4, $5, $6, $7, $8, $9, $10, 1)`,
+    `INSERT INTO warehouse_tasks(id, org_id, warehouse_id, kind, status, priority, product_id, box_id, source_location_id, destination_location_id, quantity, unit, due_at, version)
+     VALUES($1, $2, $3, 'putaway', 'pending', $4, $5, $6, $7, $8, $9, $10, $11, 1)`,
     [
       taskId,
       a.org_id,
@@ -91,6 +103,7 @@ export async function createPutawayTask(t: DB, a: Actor, payload: unknown) {
       destLoc.id,
       qty,
       unit,
+      p.dueAt || null,
     ],
   );
 
@@ -100,6 +113,7 @@ export async function createPutawayTask(t: DB, a: Actor, payload: unknown) {
     sourceLocationId: srcLoc.id,
     destinationLocationId: destLoc.id,
     quantity: qty,
+    dueAt: p.dueAt,
   });
 
   return owned(t, 'warehouse_tasks', taskId, a);
@@ -116,13 +130,12 @@ export async function assignTask(
   const task = await owned(t, 'warehouse_tasks', taskId, a, true);
   version(task, p.expectedVersion);
   requireRule(
-    task.status === 'pending' || task.status === 'assigned',
+    task.status === 'pending' || task.status === 'assigned' || task.status === 'claimed',
     'TASK_NOT_OPEN',
     'Task is not in assignable status',
     409,
   );
 
-  // Validate user has grant in warehouse
   const user = (
     await t.query('SELECT id, name FROM users WHERE id=$1 AND org_id=$2', [
       p.userId,
@@ -139,6 +152,135 @@ export async function assignTask(
   await event(t, a, taskId, 'task.assigned', {
     assignedUserId: user.id,
     assignedUserName: user.name,
+    reason: p.reason,
+  });
+
+  return owned(t, 'warehouse_tasks', taskId, a);
+}
+
+export async function claimTask(
+  t: DB,
+  a: Actor,
+  taskId: string,
+  payload: unknown,
+) {
+  authorize(a, 'prepare');
+  const p = taskClaim.parse(payload);
+  const task = await owned(t, 'warehouse_tasks', taskId, a, true);
+  version(task, p.expectedVersion);
+  requireRule(
+    task.status === 'pending' || task.status === 'assigned',
+    'TASK_NOT_CLAIMABLE',
+    'Task must be in pending or assigned status to claim',
+    409,
+  );
+
+  await t.query(
+    "UPDATE warehouse_tasks SET claimed_by=$1, claimed_at=now(), assigned_user_id=$1, status='claimed', version=version+1 WHERE id=$2",
+    [a.id, taskId],
+  );
+
+  await event(t, a, taskId, 'task.claimed', {
+    claimedBy: a.id,
+    claimedByName: a.name,
+  });
+
+  return owned(t, 'warehouse_tasks', taskId, a);
+}
+
+export async function reassignTask(
+  t: DB,
+  a: Actor,
+  taskId: string,
+  payload: unknown,
+) {
+  authorize(a, 'prepare');
+  const p = taskReassign.parse(payload);
+  const task = await owned(t, 'warehouse_tasks', taskId, a, true);
+  version(task, p.expectedVersion);
+  requireRule(
+    task.status !== 'completed' && task.status !== 'cancelled',
+    'TASK_CLOSED',
+    'Cannot reassign completed or cancelled task',
+    409,
+  );
+
+  const user = (
+    await t.query('SELECT id, name FROM users WHERE id=$1 AND org_id=$2', [
+      p.userId,
+      a.org_id,
+    ])
+  ).rows[0];
+  requireRule(user, 'USER_NOT_FOUND', 'Staff member not found in company', 404);
+
+  await t.query(
+    "UPDATE warehouse_tasks SET assigned_user_id=$1, status='assigned', version=version+1 WHERE id=$2",
+    [user.id, taskId],
+  );
+
+  await event(t, a, taskId, 'task.reassigned', {
+    previousUserId: task.assigned_user_id,
+    newUserId: user.id,
+    newUserName: user.name,
+    reason: p.reason,
+  });
+
+  return owned(t, 'warehouse_tasks', taskId, a);
+}
+
+export async function startTask(
+  t: DB,
+  a: Actor,
+  taskId: string,
+  payload: unknown,
+) {
+  authorize(a, 'prepare');
+  const p = taskStart.parse(payload);
+  const task = await owned(t, 'warehouse_tasks', taskId, a, true);
+  version(task, p.expectedVersion);
+  requireRule(
+    ['pending', 'assigned', 'claimed', 'blocked'].includes(task.status),
+    'TASK_CANNOT_START',
+    'Task is not in a startable state',
+    409,
+  );
+
+  await t.query(
+    "UPDATE warehouse_tasks SET status='in_progress', started_at=COALESCE(started_at, now()), blocked_reason=NULL, version=version+1 WHERE id=$1",
+    [taskId],
+  );
+
+  await event(t, a, taskId, 'task.started', {
+    startedAt: new Date().toISOString(),
+  });
+
+  return owned(t, 'warehouse_tasks', taskId, a);
+}
+
+export async function blockTask(
+  t: DB,
+  a: Actor,
+  taskId: string,
+  payload: unknown,
+) {
+  authorize(a, 'prepare');
+  const p = taskBlock.parse(payload);
+  const task = await owned(t, 'warehouse_tasks', taskId, a, true);
+  version(task, p.expectedVersion);
+  requireRule(
+    task.status !== 'completed' && task.status !== 'cancelled',
+    'TASK_CLOSED',
+    'Cannot block a closed task',
+    409,
+  );
+
+  await t.query(
+    "UPDATE warehouse_tasks SET status='blocked', blocked_reason=$1, version=version+1 WHERE id=$2",
+    [p.reason, taskId],
+  );
+
+  await event(t, a, taskId, 'task.blocked', {
+    reason: p.reason,
   });
 
   return owned(t, 'warehouse_tasks', taskId, a);
@@ -155,97 +297,161 @@ export async function completeTask(
   const task = await owned(t, 'warehouse_tasks', taskId, a, true);
   version(task, p.expectedVersion);
   requireRule(
-    task.status === 'assigned' || task.status === 'in_progress' || task.status === 'pending',
+    ['assigned', 'in_progress', 'claimed', 'pending'].includes(task.status),
     'TASK_NOT_ACTIVE',
     'Task is already completed or cancelled',
     409,
   );
 
-  // Validate scan confirmation
+  // Validate scan confirmation against destination location, box code, or product SKU/ID
   const destLoc = await owned(t, 'locations', task.destination_location_id, a);
   let expectedScan = destLoc.code;
   if (task.box_id) {
     const box = await owned(t, 'boxes', task.box_id, a);
     expectedScan = box.code;
   }
+  const prod = task.product_id ? await owned(t, 'products', task.product_id, a).catch(() => null) : null;
+  const validScans = [
+    destLoc.code.toUpperCase(),
+    destLoc.id.toUpperCase(),
+    expectedScan.toUpperCase(),
+    prod?.sku?.toUpperCase(),
+    prod?.id?.toUpperCase(),
+    task.product_id?.toUpperCase(),
+  ].filter((s): s is string => typeof s === 'string' && s.length > 0);
+
   requireRule(
-    p.scanConfirmation.toUpperCase() === expectedScan.toUpperCase() ||
-      p.scanConfirmation.toUpperCase() === destLoc.code.toUpperCase(),
+    validScans.includes(p.scanConfirmation.toUpperCase()),
     'SCAN_MISMATCH',
     `Scan verification failed. Scanned ${p.scanConfirmation}, expected ${expectedScan}`,
     422,
   );
 
-  // Move the stock
-  if (task.box_id) {
-    const box = await owned(t, 'boxes', task.box_id, a, true);
-    await t.query(
-      'UPDATE boxes SET location_id=$1, pallet_id=NULL, version=version+1 WHERE id=$2',
-      [destLoc.id, box.id],
-    );
-  } else if (task.product_id && task.quantity) {
-    // Loose stock movement in balances
-    const moveQty = new Decimal(task.quantity);
-    const srcBalRes = await t.query(
-      'SELECT * FROM inventory_balances WHERE org_id=$1 AND warehouse_id=$2 AND product_id=$3 AND location_id=$4 FOR UPDATE',
-      [a.org_id, a.warehouse_id, task.product_id, task.source_location_id],
-    );
-    const srcBal = srcBalRes.rows[0];
-    if (srcBal) {
-      const avail = new Decimal(srcBal.available);
-      const onHand = new Decimal(srcBal.on_hand);
-      const qtyToMove = Decimal.min(avail, moveQty);
-      await t.query(
-        'UPDATE inventory_balances SET on_hand=$1, available=$2, version=version+1, updated_at=now() WHERE id=$3',
-        [onHand.minus(qtyToMove).toFixed(6), avail.minus(qtyToMove).toFixed(6), srcBal.id],
-      );
-
-      // Add to dest
-      const destBalRes = await t.query(
-        'SELECT * FROM inventory_balances WHERE org_id=$1 AND warehouse_id=$2 AND product_id=$3 AND location_id=$4 FOR UPDATE',
-        [a.org_id, a.warehouse_id, task.product_id, destLoc.id],
-      );
-      const destBal = destBalRes.rows[0];
-      if (destBal) {
-        await t.query(
-          'UPDATE inventory_balances SET on_hand=$1, available=$2, version=version+1, updated_at=now() WHERE id=$3',
-          [
-            new Decimal(destBal.on_hand).plus(qtyToMove).toFixed(6),
-            new Decimal(destBal.available).plus(qtyToMove).toFixed(6),
-            destBal.id,
-          ],
-        );
-      } else {
-        await t.query(
-          `INSERT INTO inventory_balances(id, org_id, warehouse_id, product_id, location_id, owner_id, unit, on_hand, reserved, available, picked, in_transit, held, dispatched, version)
-           VALUES($1, $2, $3, $4, $5, $6, $7, $8, 0, $8, 0, 0, 0, 0, 1)`,
-          [
-            uuid(),
-            a.org_id,
-            a.warehouse_id,
-            task.product_id,
-            destLoc.id,
-            srcBal.owner_id,
-            srcBal.unit,
-            qtyToMove.toFixed(6),
-          ],
-        );
-      }
-    }
-  }
-
+  // Invariant: Completing a task does NOT itself mutate stock; the actual domain command must succeed.
   await t.query(
-    "UPDATE warehouse_tasks SET status='completed', scan_confirmation=$1, completed_at=now(), version=version+1 WHERE id=$2",
-    [p.scanConfirmation, taskId],
+    "UPDATE warehouse_tasks SET status='completed', scan_confirmation=$1, execution_reference_id=$2, completed_at=now(), version=version+1 WHERE id=$3",
+    [p.scanConfirmation, p.executionReferenceId || null, taskId],
   );
 
   await event(t, a, taskId, 'task.completed', {
     kind: task.kind,
     destinationLocationId: destLoc.id,
     scanConfirmation: p.scanConfirmation,
+    executionReferenceId: p.executionReferenceId,
+    reason: p.reason,
   });
 
   return owned(t, 'warehouse_tasks', taskId, a);
+}
+
+export async function createShiftHandover(
+  t: DB,
+  a: Actor,
+  payload: unknown,
+) {
+  authorize(a, 'prepare');
+  requireRule(a.warehouse_id, 'WAREHOUSE_ACCESS', 'Select an assigned warehouse', 403);
+  const p = shiftHandoverCreate.parse(payload);
+
+  if (p.incomingUserId) {
+    const incoming = (
+      await t.query('SELECT id, name FROM users WHERE id=$1 AND org_id=$2', [
+        p.incomingUserId,
+        a.org_id,
+      ])
+    ).rows[0];
+    requireRule(incoming, 'USER_NOT_FOUND', 'Incoming staff member not found', 404);
+  }
+
+  // Snapshot active and blocked tasks in the warehouse
+  const pendingTasks = (
+    await t.query(
+      `SELECT id, kind, status, priority, product_id, box_id, source_location_id, destination_location_id, due_at, assigned_user_id
+       FROM warehouse_tasks
+       WHERE org_id=$1 AND warehouse_id=$2 AND status IN ('pending', 'assigned', 'claimed', 'in_progress')
+       ORDER BY priority DESC, created_at ASC`,
+      [a.org_id, a.warehouse_id],
+    )
+  ).rows;
+
+  const blockedTasks = (
+    await t.query(
+      `SELECT id, kind, status, priority, product_id, box_id, blocked_reason, assigned_user_id
+       FROM warehouse_tasks
+       WHERE org_id=$1 AND warehouse_id=$2 AND status = 'blocked'
+       ORDER BY priority DESC, created_at ASC`,
+      [a.org_id, a.warehouse_id],
+    )
+  ).rows;
+
+  const handoverId = uuid();
+  await t.query(
+    `INSERT INTO shift_handovers(id, org_id, warehouse_id, outgoing_user_id, incoming_user_id, shift_name, handover_date, notes, pending_tasks, blocked_tasks, version)
+     VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 1)`,
+    [
+      handoverId,
+      a.org_id,
+      a.warehouse_id,
+      a.id,
+      p.incomingUserId || null,
+      p.shiftName,
+      p.handoverDate,
+      p.notes,
+      JSON.stringify(pendingTasks),
+      JSON.stringify(blockedTasks),
+    ],
+  );
+
+  await event(t, a, handoverId, 'shift.handover_created', {
+    shiftName: p.shiftName,
+    handoverDate: p.handoverDate,
+    pendingTasksCount: pendingTasks.length,
+    blockedTasksCount: blockedTasks.length,
+    incomingUserId: p.incomingUserId,
+  });
+
+  return owned(t, 'shift_handovers', handoverId, a);
+}
+
+export async function acknowledgeShiftHandover(
+  t: DB,
+  a: Actor,
+  handoverId: string,
+  payload: unknown,
+) {
+  authorize(a, 'prepare');
+  const p = shiftHandoverAcknowledge.parse(payload);
+  const handover = await owned(t, 'shift_handovers', handoverId, a, true);
+  version(handover, p.expectedVersion);
+  requireRule(!handover.acknowledged_at, 'ALREADY_ACKNOWLEDGED', 'Handover is already acknowledged', 409);
+
+  await t.query(
+    'UPDATE shift_handovers SET acknowledged_at=now(), incoming_user_id=COALESCE(incoming_user_id, $1), version=version+1 WHERE id=$2',
+    [a.id, handoverId],
+  );
+
+  await event(t, a, handoverId, 'shift.handover_acknowledged', {
+    acknowledgedBy: a.id,
+    notes: p.notes,
+  });
+
+  return owned(t, 'shift_handovers', handoverId, a);
+}
+
+export async function listShiftHandovers(t: DB, a: Actor) {
+  authorize(a, 'review');
+  requireRule(a.warehouse_id, 'WAREHOUSE_ACCESS', 'Select an assigned warehouse', 403);
+  return (
+    await t.query(
+      `SELECT sh.*, u1.name outgoing_user_name, u2.name incoming_user_name
+       FROM shift_handovers sh
+       JOIN users u1 ON u1.id = sh.outgoing_user_id
+       LEFT JOIN users u2 ON u2.id = sh.incoming_user_id
+       WHERE sh.org_id = $1 AND sh.warehouse_id = $2
+       ORDER BY sh.handover_date DESC, sh.created_at DESC LIMIT 50`,
+      [a.org_id, a.warehouse_id],
+    )
+  ).rows;
 }
 
 export async function cancelTask(

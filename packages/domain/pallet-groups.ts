@@ -60,3 +60,113 @@ export async function changePalletGroup(t:DB,a:Actor,id:string,payload:unknown,r
  else {requireRule(!active,'GROUP_MEMBERSHIP','Pallet is already assigned to an active group',409);await t.query('INSERT INTO pallet_group_memberships(id,org_id,warehouse_id,group_id,pallet_id,added_by) VALUES($1,$2,$3,$4,$5,$6)',[uuid(),a.org_id,a.warehouse_id,id,pallet.id,a.id]);}
  await t.query('UPDATE pallet_groups SET version=version+1 WHERE id=$1',[id]);await event(t,a,id,remove?'pallet_group.pallet_removed':'pallet_group.pallet_added',{palletId:pallet.id,tripId:trip.id,reason:p.reason,planningOnly:true});return owned(t,'pallet_groups',id,a);
 }
+
+export async function loadPalletGroupWorkflow(t: DB, a: Actor, id: string, payload?: unknown) {
+  authorize(a, 'dispatch');
+  requireRule(a.warehouse_id, 'WAREHOUSE_ACCESS', 'Select an assigned warehouse', 403);
+  const group = await owned(t, 'pallet_groups', id, a, true);
+  const trip = await owned(t, 'trips', group.trip_id, a, true);
+  requireRule(trip.status === 'planned', 'TRIP_STATE', 'Trip must be in planned status to load');
+
+  const pallets = (
+    await t.query(
+      `SELECT p.* FROM pallet_group_memberships m
+       JOIN pallets p ON p.id = m.pallet_id AND p.warehouse_id = m.warehouse_id
+       WHERE m.group_id = $1 AND m.org_id = $2 AND m.warehouse_id = $3 AND m.removed_at IS NULL
+       FOR UPDATE OF p`,
+      [id, a.org_id, a.warehouse_id],
+    )
+  ).rows;
+  requireRule(pallets.length > 0, 'EMPTY_GROUP', 'Pallet group contains no active pallets');
+
+  let totalBoxesLoaded = 0;
+  const shipmentIds = new Set<string>();
+  for (const pallet of pallets) {
+    requireRule(
+      pallet.checked_revision !== null && pallet.checked_revision === pallet.manifest_revision,
+      'MANIFEST_UNCHECKED',
+      `Pallet manifest is unchecked or stale: ${pallet.code}`,
+    );
+
+    const boxes = (
+      await t.query(
+        'SELECT * FROM boxes WHERE pallet_id = $1 AND org_id = $2 AND warehouse_id = $3 FOR UPDATE',
+        [pallet.id, a.org_id, a.warehouse_id],
+      )
+    ).rows;
+    requireRule(boxes.length > 0, 'EMPTY_PALLET', `Pallet has no boxes: ${pallet.code}`);
+
+    for (const box of boxes) {
+      requireRule(box.status === 'confirmed', 'BOX_STATE', `Box must be confirmed: ${box.code}`);
+      requireRule(box.condition === 'good', 'BOX_CONDITION', `Box condition must be good: ${box.code}`);
+
+      const issues = (
+        await t.query("SELECT id FROM issues WHERE box_id = $1 AND status = 'open'", [box.id])
+      ).rows;
+      requireRule(issues.length === 0, 'OPEN_ISSUE', `Box has open issues: ${box.code}`);
+
+      const lines = (
+        await t.query(
+          `SELECT sl.*, s.trip_id, s.status shipment_status
+           FROM shipment_lines sl
+           JOIN shipments s ON s.id = sl.shipment_id AND s.org_id = sl.org_id AND s.warehouse_id = sl.warehouse_id
+           WHERE sl.box_id = $1 AND sl.org_id = $2 AND sl.warehouse_id = $3`,
+          [box.id, a.org_id, a.warehouse_id],
+        )
+      ).rows;
+      requireRule(lines.length > 0, 'NO_SHIPMENT', `Box is not assigned to any shipment: ${box.code}`);
+
+      for (const line of lines) {
+        requireRule(
+          line.trip_id === group.trip_id,
+          'WRONG_TRIP',
+          `Box is assigned to trip ${line.trip_id}, not group trip ${group.trip_id}`,
+        );
+        requireRule(
+          line.shipment_status === 'ready' || line.shipment_status === 'needs_recheck',
+          'SHIPMENT_STATE',
+          'Shipment must be in ready status to load',
+        );
+
+        await t.query('UPDATE shipment_lines SET loaded = true WHERE id = $1', [line.id]);
+        totalBoxesLoaded++;
+        shipmentIds.add(line.shipment_id);
+      }
+    }
+  }
+
+  const pData = payload as any;
+  for (const sId of shipmentIds) {
+    await t.query(
+      `UPDATE shipments SET
+         recipient_type = COALESCE($1, recipient_type),
+         recipient_name = COALESCE($2, recipient_name),
+         recipient_signature = COALESCE($3, recipient_signature),
+         version = version + 1
+       WHERE id = $4`,
+      [
+        pData?.recipientType || null,
+        pData?.recipientName || null,
+        pData?.recipientSignature || null,
+        sId,
+      ],
+    );
+  }
+
+  await event(t, a, id, 'pallet_group.loaded', {
+    tripId: trip.id,
+    palletsCount: pallets.length,
+    boxesLoadedCount: totalBoxesLoaded,
+    reason: pData?.reason,
+  });
+
+  return {
+    groupId: id,
+    tripId: trip.id,
+    loaded: true,
+    loadedBoxesCount: totalBoxesLoaded,
+    palletsCount: pallets.length,
+    boxesLoadedCount: totalBoxesLoaded,
+  };
+}
+
