@@ -579,6 +579,27 @@ export const services = {
       "This box is already allocated",
       409,
     );
+    // Invariant: Stock under active quality hold/quarantine cannot be allocated
+    const warehouseId = a.warehouse_id || `${a.org_id}:legacy`;
+    const activeHold = await t.query(
+      `SELECT id, reason FROM quality_holds
+       WHERE org_id = $1 AND warehouse_id = $2 AND status = 'active'
+         AND (
+           (scope = 'box' AND target_id = $3) OR
+           (scope = 'product' AND target_id = $4) OR
+           (scope = 'lot' AND target_id = $5) OR
+           (scope = 'location' AND target_id = $6)
+         )
+       LIMIT 1`,
+      [a.org_id, warehouseId, b.id, cs[0].product_id, cs[0].lot_id || 'none', b.location_id || 'none'],
+    );
+    requireRule(
+      activeHold.rows.length === 0,
+      "QUALITY_HOLD",
+      "Stock cannot be allocated: active quality hold (" + (activeHold.rows[0]?.reason || "") + ")",
+      422,
+    );
+
     const sum = (
       await t.query(
         "SELECT COALESCE(sum(quantity),0)::text total FROM allocations WHERE order_line_id=$1",

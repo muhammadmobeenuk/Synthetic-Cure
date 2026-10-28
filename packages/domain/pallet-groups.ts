@@ -105,6 +105,22 @@ export async function loadPalletGroupWorkflow(t: DB, a: Actor, id: string, paylo
       ).rows;
       requireRule(issues.length === 0, 'OPEN_ISSUE', `Box has open issues: ${box.code}`);
 
+      const holdRes = (
+        await t.query(
+          `SELECT id, reason FROM quality_holds
+           WHERE org_id = $1 AND warehouse_id = $2 AND status = 'active'
+             AND (
+               (scope = 'box' AND target_id = $3) OR
+               (scope = 'product' AND target_id IN (SELECT product_id FROM contents WHERE box_id = $3)) OR
+               (scope = 'lot' AND target_id IN (SELECT lot_id FROM contents WHERE box_id = $3 AND lot_id IS NOT NULL))
+             )
+           LIMIT 1`,
+          [a.org_id, a.warehouse_id, box.id],
+        )
+      ).rows[0];
+      requireRule(!holdRes, 'QUALITY_HOLD', `Box or contents under active quality hold: ${holdRes?.reason}`);
+
+
       const lines = (
         await t.query(
           `SELECT sl.*, s.trip_id, s.status shipment_status

@@ -2345,7 +2345,7 @@ test('imports: HTTP permissions, cross-company/warehouse reads/reports/commit/li
  const list=await inject(app,{url:'/api/v1/imports/products',headers:otherWarehouse.headers});assert.ok(!list.body.items.some((r:any)=>r.id===staged.body.id));
 });
 test('imports: v4 restore retains originals/links and legacy v3 restores with empty imports',async()=>{
- const archive=await snapshot(db),target=await openDatabase(null,':memory:');assert.equal(archive.format,'jadesun-v6');
+ const archive=await snapshot(db),target=await openDatabase(null,':memory:');assert.equal(archive.format,'jadesun-v7');
  try{await migrate(target);await restoreSnapshot(target,archive);assert.equal((await reviewProductImport(target,importActor,importBatch.id)).source_csv,importBatch.source_csv);assert.equal((await target.query('SELECT count(*)::int n FROM product_import_items')).rows[0].n,archive.tables.product_import_items.length)}finally{await target.close()}
  const legacy={...archive,format:'jadesun-v3',tables:{...archive.tables}};delete legacy.tables.product_imports;delete legacy.tables.product_import_items;delete legacy.tables.pallet_groups;delete legacy.tables.pallet_group_memberships;
  const old=await openDatabase(null,':memory:');try{await migrate(old);await restoreSnapshot(old,legacy);assert.equal((await old.query('SELECT count(*)::int n FROM product_imports')).rows[0].n,0)}finally{await old.close()}

@@ -28,3 +28,10 @@ packages/database/migrations/012_product_imports.sql: immutable source and typed
 packages/contracts/inbound.ts, packages/domain/inbound.ts: scoped supplier and one-product expected receipt contracts and commands.
 packages/database/migrations/014_inbound.sql: supplier, expectation and immutable physical box receipt links.
 apps/web/src/Inbound.tsx: expected-arrival planning and physical box receipt on Receive & scan.
+
+packages/contracts/traceability.ts, packages/contracts/offline-sync.ts: Zod contracts for quality quarantine holds, recalls, serials and offline sync mutations.
+packages/domain/traceability.ts: quality quarantine hold placement/release, recall lifecycle, impact dossier analysis, backward/forward lineage, formula-neutralized CSV export.
+packages/domain/offline-sync.ts: offline mutation queue, file-before-command dependency ordering, visible 409 conflict detection, rebase/retry/discard, bounded retries.
+packages/database/migrations/018_traceability_recalls_offline_sync.sql: item_serials, lots extensions, quality_holds, recalls, sync_outbox tables and indexes.
+apps/web/src/Traceability.tsx: integrated UI suite for quarantine holds, recall management, impact dossiers, lineage investigation, and scoped sync outbox.
+tests/p2-traceability-recalls-offline-sync.test.ts: comprehensive domain and multi-tenant isolation test suite for P2 vertical slice.

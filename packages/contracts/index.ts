@@ -199,4 +199,5 @@ export * from './onboarding.js';
 export * from './picking.js';
 export * from './transport.js';
 export * from './orders.js';
-
+export * from './traceability.js';
+export * from './offline-sync.js';

@@ -4,6 +4,7 @@ import {PalletGroups} from "./PalletGroups";
 import {CustomerOrderForm} from "./CustomerOrderForm";
 import {ProductImport} from "./ProductImport";
 import {Inbound} from "./Inbound";
+import {Traceability} from "./Traceability";
 import {DraftRecovery} from "./DraftRecovery";
 import {ContextPicker,AccessControl} from "./AccessControl";
 import {SmartCombobox, SmartQuantityInput, useBarcodeScanner, playScanFeedback, SmartSignaturePad, checkEnvironmentalCompatibility, EnvironmentalWarningBadge} from "./SmartInputs";
@@ -2871,6 +2872,15 @@ function App() {
                       />
                     )}
                   </div>
+                  <Traceability
+                    key={draftScope(user as any)}
+                    actor={user as any}
+                    products={rows("products")}
+                    locations={rows("locations")}
+                    canAdjust={can("adjust")}
+                    canReview={can("review")}
+                    onSaved={refresh}
+                  />
                 </>
               )}
               {page === "documents" && (

@@ -138,6 +138,23 @@ export async function verifyPickOperation(
     );
   }
 
+  // Active quality quarantine hold check
+  const pickTargetProduct = isSubstitution ? p.substitutedProductId! : orderLine.product_id;
+  const holdRes = (
+    await t.query(
+      `SELECT id, reason FROM quality_holds
+       WHERE org_id = $1 AND warehouse_id = $2 AND status = 'active'
+         AND (
+           (scope = 'product' AND target_id = $3) OR
+           (scope = 'lot' AND target_id = $4) OR
+           (scope = 'location' AND target_id = $5)
+         )
+       LIMIT 1`,
+      [a.org_id, a.warehouse_id, pickTargetProduct, p.lotId || 'none', p.sourceLocationId],
+    )
+  ).rows[0];
+  requireRule(!holdRes, 'QUALITY_HOLD', `Product or location is under active quality hold: ${holdRes?.reason}`, 422);
+
   const requestedQty = new Decimal(orderLine.quantity);
   const pickedQty = new Decimal(p.quantityPicked);
   requireRule(pickedQty.gte(0), 'INVALID_QUANTITY', 'Picked quantity cannot be negative');

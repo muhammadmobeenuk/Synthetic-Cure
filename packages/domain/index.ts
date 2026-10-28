@@ -69,4 +69,7 @@ export * from './orders.js';
 export * from './documents.js';
 export * from './scheduling.js';
 export * from './pallet-groups.js';
+export * from './traceability.js';
+export * from './offline-sync.js';
 export * from './services.js';
+

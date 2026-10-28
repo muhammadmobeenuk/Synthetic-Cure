@@ -161,6 +161,36 @@ import {
   suggestPreparationBatches,
   createScheduledEmptyBatch,
 } from '../../packages/domain/scheduling.js';
+import {
+  listQualityHolds,
+  createQualityHold,
+  releaseQualityHold,
+  initiateRecall,
+  closeRecall,
+  getRecallReport,
+  exportRecallCsv,
+  backwardTrace,
+  forwardTrace,
+  registerItemSerial,
+} from '../../packages/domain/traceability.js';
+import {
+  qualityHoldCreate,
+  qualityHoldRelease,
+  recallInitiate,
+  recallClose,
+  serialRegister,
+} from '../../packages/contracts/traceability.js';
+import {
+  queueOfflineOperation,
+  getOfflineOutbox,
+  resolveOfflineConflict,
+  syncOfflineOutboxBatch,
+} from '../../packages/domain/offline-sync.js';
+import {
+  offlineOperationQueue,
+  offlineConflictResolve,
+} from '../../packages/contracts/offline-sync.js';
+
 import {palletGroupList,palletGroupReconciliation,createPalletGroup,changePalletGroup,loadPalletGroupWorkflow} from '../../packages/domain/pallet-groups.js';
 import {errorCsv} from '../../packages/domain/csv.js';
 import {contexts,permittedWarehouses,resolveActor,validateActor,legacyWarehouse} from "../../packages/domain/context.js";
@@ -2010,6 +2040,159 @@ export function createApp(
     res.json(await suggestPreparationBatches(db, req.actor, fromDate, count));
   });
   app.post("/api/v1/schedules/batch", run(schemas.command.extend({ targetDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }), "prepare", () => "schedule-batch-create", (t, a, p) => createScheduledEmptyBatch(t, a, { businessDate: p.targetDate })));
+
+  // --- P2 Traceability, Quality Quarantine Holds & Recalls ---
+  app.get("/api/v1/quality-holds", async (req, res, next) => {
+    try {
+      authorize(req.actor, "review");
+      const holds = await listQualityHolds(db, req.actor, {
+        status: typeof req.query.status === "string" ? req.query.status : undefined,
+        scope: typeof req.query.scope === "string" ? req.query.scope : undefined,
+        targetId: typeof req.query.targetId === "string" ? req.query.targetId : undefined,
+        limit: req.query.limit ? Number(req.query.limit) : undefined,
+        offset: req.query.offset ? Number(req.query.offset) : undefined,
+      });
+      res.json(holds);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post("/api/v1/quality-holds", async (req, res, next) => {
+    try {
+      const p = qualityHoldCreate.parse(req.body);
+      const hold = await createQualityHold(db, req.actor, p);
+      res.json(hold);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post("/api/v1/quality-holds/:id/release", async (req, res, next) => {
+    try {
+      const p = qualityHoldRelease.parse(req.body);
+      const released = await releaseQualityHold(db, req.actor, String(req.params.id), p);
+      res.json(released);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post("/api/v1/recalls", async (req, res, next) => {
+    try {
+      const p = recallInitiate.parse(req.body);
+      const recall = await initiateRecall(db, req.actor, p);
+      res.json(recall);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.get("/api/v1/recalls/:id", async (req, res, next) => {
+    try {
+      authorize(req.actor, "review");
+      const report = await getRecallReport(db, req.actor, String(req.params.id));
+      res.json(report);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post("/api/v1/recalls/:id/close", async (req, res, next) => {
+    try {
+      const p = recallClose.parse(req.body);
+      const closed = await closeRecall(db, req.actor, String(req.params.id), p);
+      res.json(closed);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.get("/api/v1/recalls/:id/export", async (req, res, next) => {
+    try {
+      authorize(req.actor, "review");
+      const csv = await exportRecallCsv(db, req.actor, String(req.params.id));
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="recall-${req.params.id}.csv"`);
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.send(csv);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.get("/api/v1/traceability/backward", async (req, res, next) => {
+    try {
+      authorize(req.actor, "review");
+      const trace = await backwardTrace(db, req.actor, {
+        boxId: typeof req.query.boxId === "string" ? req.query.boxId : undefined,
+        boxCode: typeof req.query.boxCode === "string" ? req.query.boxCode : undefined,
+        orderId: typeof req.query.orderId === "string" ? req.query.orderId : undefined,
+      });
+      res.json(trace);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.get("/api/v1/traceability/forward", async (req, res, next) => {
+    try {
+      authorize(req.actor, "review");
+      const trace = await forwardTrace(db, req.actor, {
+        productId: typeof req.query.productId === "string" ? req.query.productId : undefined,
+        lotId: typeof req.query.lotId === "string" ? req.query.lotId : undefined,
+        serialNumber: typeof req.query.serialNumber === "string" ? req.query.serialNumber : undefined,
+      });
+      res.json(trace);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post("/api/v1/serials", async (req, res, next) => {
+    try {
+      const p = serialRegister.parse(req.body);
+      const serial = await registerItemSerial(db, req.actor, p);
+      res.json(serial);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // --- P2 Scoped Offline Sync Outbox ---
+  app.post("/api/v1/sync/queue", async (req, res, next) => {
+    try {
+      const p = offlineOperationQueue.parse(req.body);
+      const item = await queueOfflineOperation(db, req.actor, p);
+      res.json(item);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.get("/api/v1/sync/outbox", async (req, res, next) => {
+    try {
+      const items = await getOfflineOutbox(db, req.actor, {
+        status: typeof req.query.status === "string" ? req.query.status : undefined,
+        limit: req.query.limit ? Number(req.query.limit) : undefined,
+        offset: req.query.offset ? Number(req.query.offset) : undefined,
+      });
+      res.json(items);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post("/api/v1/sync/conflicts/:id/resolve", async (req, res, next) => {
+    try {
+      const p = offlineConflictResolve.parse(req.body);
+      const resolved = await resolveOfflineConflict(db, req.actor, String(req.params.id), p);
+      res.json(resolved);
+    } catch (e) {
+      next(e);
+    }
+  });
+
 
   app.get('/api/v1/ai/status',async(req,res)=>{authorize(req.actor,'receive');res.json(await ocrStatus())});
   app.post('/api/v1/documents/:id/extract',run(schemas.extractionRequest,'receive',r=>'extract:'+r.params.id,async(t,a,p,r)=>{

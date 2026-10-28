@@ -1,4 +1,33 @@
-# Active slice · P1 daily work, orders and transport
+# Active slice · P2 Batch/Serial/Expiry Tracing, Quality Holds, Recalls and Scoped Offline Sync
+
+Acceptance: Deliver complete product traceability, quality quarantine holds, recall investigation & execution, and scoped offline sync with bounded retries:
+1. Batch, serial & expiry tracing: Serial number tracking (`item_serials`), lot metadata extension (manufacturing date, origin, cold chain limits, quality status), and forward/backward traceability query engine.
+2. Quality holds & quarantine (`quality_holds`): Authorized supervisors can place and release quality holds on products, lots, serials, boxes, or locations with explicit reason and severity (`critical`, `major`, `minor`). Invariant: Stock under active quality hold cannot be allocated, picked, loaded, or dispatched. Releasing holds requires supervisor authorization, disposition notes, and records immutable compensating audit events.
+3. Recall management & impact analysis (`recalls`): Authoritative recall initiation (`initiateRecall`) atomically places matching on-hand inventory into quarantine hold, performs forward trace across all outbound shipments, trips, drivers, and destinations, records affected customer details, and generates an official recall report (`getRecallReport`) and CSV export with formula injection neutralization.
+4. Scoped offline sync engine (`sync_outbox`): Queue operations with stable client operation IDs (`clientOperationId`), expected versions, and explicit dependencies.
+5. File-before-command dependency: Operations with photo/document attachments (e.g. damaged box photo, delivery signature) must verify authoritative file storage before the dependent domain mutation can be dispatched.
+6. Visible conflict resolution: Stale entity versions return 409 `VERSION_CONFLICT` and transition queue items to visible `conflict` status without silent overwrites or lost user work.
+7. Bounded retries: Exponential backoff with maximum attempt limit (5); network failures do not drop queue items or mark unconfirmed operations as confirmed.
+8. Server confirmation gate for final dispatch: Final dispatch (`dispatchShipment`, `completeDelivery`) strictly requires authoritative server confirmation; cannot be marked dispatched in local UI without HTTP 200 from server.
+
+Contracts: `packages/contracts/traceability.ts`, `packages/contracts/offline-sync.ts`.
+Domain: `packages/domain/traceability.ts`, `packages/domain/offline-sync.ts`, with integration in `packages/domain/services.ts`, `orders.ts`, `picking.ts`, `transport.ts`.
+Database: Migration `018_traceability_recalls_offline_sync.sql`, logical backup v7 in `packages/database/backup.ts`.
+API: `/api/v1/quality-holds`, `/api/v1/traceability/*`, `/api/v1/recalls/*`, `/api/v1/sync/outbox/*`.
+UI: Traceability, Quality Holds & Recalls review view and Offline Sync Status panel in `apps/web`.
+
+Failure/recovery: preserve all domain invariants—server-derived actors and provenance, zero stock changes from OCR, stable box identity, at most one pallet, standalone vs inherited pallet location, verified conversions only, transactional idempotency (`clientOperationId`), 409 on stale versions, append-only audit events, returns held, no stock invented.
+
+Verification:
+- P2 Traceability & Offline Sync Test Suite (`tests/p2-traceability-recalls-offline-sync.test.ts`): PASSED (6/6 tests, 100% pass rate).
+- Full Regression Test Suite (`npm test`): PASSED (139 tests: 137 passed, 0 failed, 2 skipped: 1 native PostgreSQL skipped, 1 tesseract skipped).
+- Strict TypeScript Check (`npm run typecheck` / `tsc --noEmit`): PASSED (0 errors).
+- Client Application Bundle Build (`npm run build` / `vite build`): PASSED (built in 464ms).
+- Native PostgreSQL Concurrency & Restore: BLOCKED (disposable database URLs `TEST_DATABASE_URL` and `TEST_RESTORE_DATABASE_URL` not configured in environment).
+- Physical Warehouse Mobile Terminals & Hardware Scanners: UNVERIFIED (hardware not connected). Production readiness is not claimed.
+
+## Previous slice · P1 daily work, orders and transport
+
 
 Acceptance: Deliver daily work, orders, transport, and customer documents across 8 core domains:
 1. Warehouse tasks and shift handover: Assignee (`assigned_user_id`), priority, due time (`due_at`), claim/reassign with optimistic concurrency control (`expectedVersion`), blocked reason (`blocked_reason`), status tracking, and shift handover lists (`shift_handovers`). Invariant: Completing a task does not itself mutate stock; the actual domain command must succeed.
