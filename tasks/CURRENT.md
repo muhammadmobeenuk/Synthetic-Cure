@@ -1,4 +1,13 @@
-# Active slice · P3 PowerPoint Operations Report Generator (Warehouse Floor Operations & Shift Briefing)
+# Active slice · Frontend Bundle Modularization & Clean Browser Rendering (Vite Dev Fix)
+
+Acceptance: Eliminate transitive backend module leakage in browser client code and guarantee clean browser rendering without white-screen crashes or port collisions:
+1. Decoupled calendar date arithmetic: Extracted `nextPreparationDate` into pure domain module `packages/domain/date.ts` with zero Node or database dependencies. Re-exported from `packages/domain/scheduling.ts` preserving backward compatibility for backend routes and tests.
+2. Clean browser imports: Updated `apps/web/src/main.tsx` to import `nextPreparationDate` from `packages/domain/date`, eliminating transitive imports of `services.ts` and `node:crypto` which triggered uncaught proxy access errors at client evaluation time.
+3. Clean dev server lifecycle: Terminated zombie processes holding ports `3000` and `24678`, cleared corrupted `node_modules/.vite` optimization cache, and ensured the user's terminal dev server has exclusive port binding.
+4. Headless Chrome DOM & screenshot verification: Validated that `http://localhost:3000` renders the complete landing and staff workspace screen with full visual fidelity.
+5. Verification: `npm run verify` PASSED (TypeScript 0 errors, full test suite 148 passed / 0 failed / 2 skipped, Vite bundle built in 576ms with 0 externalization warnings).
+
+## Previous slice · P3 PowerPoint Operations Report Generator (Warehouse Floor Operations & Shift Briefing)
 
 Acceptance: Deliver data-driven PowerPoint (.pptx) operations deck and metrics export designed specifically for Warehouse Floor Operations & Shift Supervisors using the Synthetic Cure Dark Theme:
 1. Operational metrics query (`getOperationsReportData`): Scoped strictly to active company (`org_id`) and warehouse (`warehouse_id`). Computes authoritative operational aggregates from real database records:

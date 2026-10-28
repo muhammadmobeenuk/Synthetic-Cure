@@ -13,7 +13,7 @@ import {SmartCombobox, SmartQuantityInput, useBarcodeScanner, playScanFeedback, 
 import {draftScope,legacyDraftScopes} from "./draft-scope";
 import {registerPendingCapture,preservePendingWork,signOutSafely} from "./work-preservation";
 import { CompanySetup } from "./CompanySetup";
-import { nextPreparationDate } from "../../../packages/domain/scheduling";
+import { nextPreparationDate } from "../../../packages/domain/date";
 import Decimal from "decimal.js";
 import React, { useState, useEffect, useRef, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";

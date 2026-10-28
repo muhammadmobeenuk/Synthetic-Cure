@@ -11,7 +11,8 @@ evidence: candidate verification output.
 
 apps/web/src/CompanySetup.tsx: resumable company identity/locale/schedule workflow.
 packages/domain/configuration.ts: authorized versioned configuration commands.
-packages/domain/scheduling.ts: date-only weekday suggestions.
+packages/domain/date.ts: pure calendar date arithmetic decoupled from server dependencies.
+packages/domain/scheduling.ts: date-only weekday suggestions and re-exported date math.
 packages/database/sql.ts: quote/comment-aware migration splitting.
 docs/CONFIGURATION.md, MIGRATIONS.md, ONBOARDING.md, READINESS.md: platform operation and candid gates.
 
